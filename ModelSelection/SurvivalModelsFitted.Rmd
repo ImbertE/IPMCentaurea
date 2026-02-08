@@ -1,0 +1,511 @@
+---
+title: "Survival Models Fitted"
+author: "Loïc Pages"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+word_document: default
+html_document:
+  df_print: paged
+---
+  
+```{r,message=FALSE}
+rm(list=ls())
+library(knitr)
+library(spaMM)
+library(tidyverse)
+library(splines)
+library(foreach)
+library(doParallel)
+library(patchwork)
+
+setwd("~/Documents/Recherches/centaurea/demographie/IPMCentaurea/")
+IPM_data <- read.csv("data/donneesIPM.csv")
+centauree_data <- IPM_data[!is.na(IPM_data$Size0Mars) & !is.na(IPM_data$Age),]
+centauree_data$Age[centauree_data$Age > 8] <- 8
+
+spaMM.options(separation_max=70)
+load("ModelSelection/SelectedModels.RData")
+```
+
+```{r,include=FALSE}
+annees <- 1995:2022
+populations <- c("E2","E1","Au","Po","Pe","Cr")
+
+taille_range <- seq(0.5, 25, by = 0.5) 
+age_range <- 1:8
+
+fake_data <- expand.grid(
+  year = annees,
+  Pop = populations,
+  Size0Mars = taille_range,
+  Age = age_range
+)
+
+fake_data <- fake_data %>% 
+  mutate(Individu = row_number()) 
+
+fake_data1 <- fake_data[fake_data$Age==1,]
+fake_data2 <- fake_data[fake_data$Age>1,]
+fake_data3 <- expand.grid(
+  year = annees,
+  Pop = populations,
+  Size0Mars = taille_range,
+  Age = age_range,
+  Size1 = taille_range)
+```
+
+BIC
+```{r,include=FALSE}
+# N the number of subjects
+# ntot the total number of observations
+extractBIC <- function(fit, ntot, N=1){
+  extractAIC(fit)[[2]] +(log(ntot)-2)*DoF(fit)[[3]] + log(N)*DoF(fit)[[1]]
+}
+```
+
+# Survival probability
+
+
+```{r, warning=FALSE}
+survdata <- centauree_data[centauree_data$Flowering!=1 ,]
+
+survdata %>%
+  group_by(Size0Mars) %>%
+  mutate(survivalProba = sum(Survie, na.rm = TRUE) / n()) %>% 
+  ggplot(aes(x = Size0Mars, y = Survie)) +
+  geom_count(alpha = 0.6) +  # Points dimensionnés selon la fréquence
+  geom_point(aes(y = survivalProba), color = "red", size = 0.5) +
+  geom_line(aes(y = survivalProba), color = "red") +
+  labs(title = "Relationship between size and survival",
+       x = "Size",
+       y = "Survival",
+       subtitle = "Grey points : observed survival (0/1)
+Red points : mean value for each size") +
+  ylim(0, 1) +
+  theme_minimal()
+
+survdata %>%
+  group_by(Age) %>%
+  mutate(survivalProba = sum(Survie, na.rm = TRUE) / n()) %>%
+  ggplot(aes(x = Age, y = Survie)) +
+  geom_count(alpha = 0.6) +  # Points dimensionnés selon la fréquence
+  geom_point(aes(x = Age, y = survivalProba), color = "red", size = 1) +
+  geom_line(aes(x = Age, y = survivalProba), color = "red") +
+  labs(title = "Relationship between age and survival",
+       x = "age",
+       y = "Survival",
+       subtitle = "Grey points : observed survival (0/1)
+Red points : mean value for each age") +
+  ylim(0, 1) +
+  theme_minimal()
+```
+
+Seedling survival
+
+```{r,echo=FALSE,warning=FALSE,out.width="50%"}
+survdata1 <- survdata[survdata$Age==1,]
+
+survdata1 %>%
+  group_by(Size0Mars) %>%
+  mutate(survivalProba = sum(Survie, na.rm = TRUE) / n()) %>% 
+  ggplot(aes(x = Size0Mars, y = Survie)) +
+  geom_count(alpha = 0.6) +  # Points dimensionnés selon la fréquence
+  geom_point(aes(y = survivalProba), color = "red", size = 0.5) +
+  geom_line(aes(y = survivalProba), color = "red") +
+   labs(title = "Relationship between size and survival",
+       x = "Size",
+       y = "Survival",
+       subtitle = "Grey points : observed survival (0/1)
+Red points : mean value for each size") +
+  ylim(0, 1) +
+  theme_minimal()
+```
+
+5 selected models on AIC : ASeedling_survglm1....
+5 selection models on BIC : BSeedling_survglm1...
+
+Print summary of each model and save predicted values
+
+```{r, warning=FALSE}
+
+result <- function(combi) {
+  effect_formula <- paste(unlist(combi), collapse = "+")
+  formula <- as.formula(paste("Survie", "~", effect_formula))
+  fit <- fitme(formula, data = survdata1, family=binomial, method = "PQL/L")
+}
+
+ASeedling_survglm1 <- result(Seedling_survmodAIC[[1]])
+ASeedling_survglm2 <- result(Seedling_survmodAIC[[2]])
+ASeedling_survglm3 <- result(Seedling_survmodAIC[[3]])
+ASeedling_survglm4 <- result(Seedling_survmodAIC[[4]])
+ASeedling_survglm5 <- result(Seedling_survmodAIC[[5]])
+
+BSeedling_survglm1 <- result(Seedling_survmodBIC[[1]])
+BSeedling_survglm2 <- result(Seedling_survmodBIC[[2]])
+BSeedling_survglm3 <- result(Seedling_survmodBIC[[3]])
+BSeedling_survglm4 <- result(Seedling_survmodBIC[[4]])
+BSeedling_survglm5 <- result(Seedling_survmodBIC[[5]])
+
+
+summary(ASeedling_survglm1)
+summary(ASeedling_survglm2)
+summary(ASeedling_survglm3)
+summary(ASeedling_survglm4)
+summary(ASeedling_survglm5)
+
+summary(BSeedling_survglm1)
+summary(BSeedling_survglm2)
+summary(BSeedling_survglm3)
+summary(BSeedling_survglm4)
+summary(BSeedling_survglm5)
+
+ASeedling_survpredict1 <- predict(ASeedling_survglm1, newdata = fake_data1)[,1]
+ASeedling_survpredict2 <- predict(ASeedling_survglm2, newdata = fake_data1)[,1]
+ASeedling_survpredict3 <- predict(ASeedling_survglm3, newdata = fake_data1)[,1]
+ASeedling_survpredict4 <- predict(ASeedling_survglm4, newdata = fake_data1)[,1]
+ASeedling_survpredict5 <- predict(ASeedling_survglm5, newdata = fake_data1)[,1]
+BSeedling_survpredict1 <- predict(BSeedling_survglm1, newdata = fake_data1)[,1]
+BSeedling_survpredict2 <- predict(BSeedling_survglm2, newdata = fake_data1)[,1]
+BSeedling_survpredict3 <- predict(BSeedling_survglm3, newdata = fake_data1)[,1]
+BSeedling_survpredict4 <- predict(BSeedling_survglm4, newdata = fake_data1)[,1]
+BSeedling_survpredict5 <- predict(BSeedling_survglm5, newdata = fake_data1)[,1]
+```
+
+Plot for predicted values 
+
+```{r}
+plot_survie1 <- function(data = fake_data1, prediction, var, c1, valc1, fact, mindat, maxdat) {
+  data %>%
+    mutate(surv_predi = prediction) %>%
+    filter(!!sym(c1) == valc1) %>%
+    ggplot(aes(x = .data[[var]], y = surv_predi)) +
+    geom_vline(xintercept=maxdat, lty="dotted")+
+    geom_vline(xintercept=mindat, lty="dotted")+
+    geom_line(aes(color = as.factor(.data[[fact]])),show.legend = FALSE) +
+    theme_minimal() +
+    ylim(0, 1)+
+    xlim(0,maxdat)
+}
+```
+
+
+Survival 
+Population is fixed
+Variation among years
+
+```{r, warning=FALSE,echo=FALSE}
+var <- "Size0Mars"
+c1 <- "Pop"
+valc1 <- "Au"
+fact <- "year"
+
+maxdat <- max(survdata1$Size0Mars)
+mindat <- min(survdata1$Size0Mars)
+
+wrap_plots(
+  plot_survie1(prediction = ASeedling_survpredict1, var=var, c1=c1, valc1=valc1, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie1(prediction = ASeedling_survpredict2, var=var, c1=c1, valc1=valc1, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie1(prediction = ASeedling_survpredict3, var=var, c1=c1, valc1=valc1, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie1(prediction = ASeedling_survpredict4, var=var, c1=c1, valc1=valc1, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie1(prediction = ASeedling_survpredict5, var=var, c1=c1, valc1=valc1,  fact=fact, maxdat = maxdat, mindat = mindat)
+)
+```
+Same for BIC
+```{r,warning=FALSE,echo=FALSE}
+wrap_plots(
+  plot_survie1(prediction = BSeedling_survpredict1, var=var, c1=c1, valc1=valc1, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie1(prediction = BSeedling_survpredict2, var=var, c1=c1, valc1=valc1, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie1(prediction = BSeedling_survpredict3, var=var, c1=c1, valc1=valc1, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie1(prediction = BSeedling_survpredict4, var=var, c1=c1, valc1=valc1, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie1(prediction = BSeedling_survpredict5, var=var, c1=c1, valc1=valc1,  fact=fact, maxdat = maxdat, mindat = mindat)
+)
+```
+
+Year is fixed
+Variation among populations
+```{r,warning=FALSE,echo=FALSE}
+var <- "Size0Mars"
+c1 <- "year"
+valc1 <- 2000
+fact <- "Pop"
+
+wrap_plots(
+  plot_survie1(prediction = ASeedling_survpredict1, var=var, c1=c1, valc1=valc1, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie1(prediction = ASeedling_survpredict2, var=var, c1=c1, valc1=valc1, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie1(prediction = ASeedling_survpredict3, var=var, c1=c1, valc1=valc1, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie1(prediction = ASeedling_survpredict4, var=var, c1=c1, valc1=valc1, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie1(prediction = ASeedling_survpredict5, var=var, c1=c1, valc1=valc1,  fact=fact, maxdat = maxdat, mindat = mindat)
+)
+```
+
+
+BIC
+```{r,warning=FALSE,echo=FALSE}
+wrap_plots(
+  plot_survie1(prediction = BSeedling_survpredict1, var=var, c1=c1, valc1=valc1, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie1(prediction = BSeedling_survpredict2, var=var, c1=c1, valc1=valc1, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie1(prediction = BSeedling_survpredict3, var=var, c1=c1, valc1=valc1, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie1(prediction = BSeedling_survpredict4, var=var, c1=c1, valc1=valc1, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie1(prediction = BSeedling_survpredict5, var=var, c1=c1, valc1=valc1,  fact=fact, maxdat = maxdat, mindat = mindat)
+)
+```
+
+Plant survival (Age >1)
+
+```{r,echo=FALSE, out.width="50%",warning=FALSE}
+survdata2 <- survdata[survdata$Age>1,]
+
+survdata2 %>%
+  group_by(Size0Mars) %>%
+  mutate(survivalProba = sum(Survie, na.rm = TRUE) / n()) %>% 
+  ggplot(aes(x = Size0Mars, y = Survie)) +
+  geom_count(alpha = 0.6) +  # Points dimensionnés selon la fréquence
+  geom_point(aes(y = survivalProba), color = "red", size = 0.5) +
+  geom_line(aes(y = survivalProba), color = "red") +
+  labs(title = "Relationship between size and survival",
+       x = "Size",
+       y = "Survival",
+       subtitle = "Grey points : observed survival (0/1)
+Red points : mean value for each size") +
+  ylim(0, 1) +
+  theme_minimal()
+
+survdata2 %>%
+  group_by(Age) %>%
+  mutate(survivalProba = sum(Survie, na.rm = TRUE) / n()) %>% 
+  ggplot(aes(x = Age, y = Survie)) +
+  geom_count(alpha = 0.6) +  # Points dimensionnés selon la fréquence
+  geom_point(aes(y = survivalProba), color = "red", size = 0.5) +
+  geom_line(aes(y = survivalProba), color = "red") +
+ labs(title = "Relationship between age and survival",
+       x = "Age",
+       y = "Survival",
+       subtitle = "Grey points : observed survival (0/1)
+Red points : mean value for each age") +  ylim(0, 1) +
+  theme_minimal()
+```
+5 selected models on AIC : APlant_survglm1....
+5 selection models on BIC : BPlant_survglm1...
+
+Print summary of each model and save predicted values
+AIC nd BIC
+```{r, warning=FALSE}
+result <- function(combi) {
+  effect_formula <- paste(unlist(combi), collapse = "+")
+  formula <- as.formula(paste("Survie", "~", effect_formula))
+  fit <- fitme(formula, data = survdata2, family=binomial, method = "PQL/L")
+}
+
+APlant_survglm1 <- result(Plant_survmodAIC[[1]])
+APlant_survglm2 <- result(Plant_survmodAIC[[2]])
+APlant_survglm3 <- result(Plant_survmodAIC[[3]])
+APlant_survglm4 <- result(Plant_survmodAIC[[4]])
+APlant_survglm5 <- result(Plant_survmodAIC[[5]])
+
+BPlant_survglm1 <- result(Plant_survmodBIC[[1]])
+BPlant_survglm2 <- result(Plant_survmodBIC[[2]])
+BPlant_survglm3 <- result(Plant_survmodBIC[[3]])
+BPlant_survglm4 <- result(Plant_survmodBIC[[4]])
+BPlant_survglm5 <- result(Plant_survmodBIC[[5]])
+
+
+summary(APlant_survglm1)
+summary(APlant_survglm2)
+summary(APlant_survglm3)
+summary(APlant_survglm4)
+summary(APlant_survglm5)
+
+summary(BPlant_survglm1)
+summary(BPlant_survglm2)
+summary(BPlant_survglm3)
+summary(BPlant_survglm4)
+summary(BPlant_survglm5)
+
+APlant_survpredict1 <- predict(APlant_survglm1, newdata = fake_data2)[,1]
+APlant_survpredict2 <- predict(APlant_survglm2, newdata = fake_data2)[,1]
+APlant_survpredict3 <- predict(APlant_survglm3, newdata = fake_data2)[,1]
+APlant_survpredict4 <- predict(APlant_survglm4, newdata = fake_data2)[,1]
+APlant_survpredict5 <- predict(APlant_survglm5, newdata = fake_data2)[,1]
+BPlant_survpredict1 <- predict(BPlant_survglm1, newdata = fake_data2)[,1]
+BPlant_survpredict2 <- predict(BPlant_survglm2, newdata = fake_data2)[,1]
+BPlant_survpredict3 <- predict(BPlant_survglm3, newdata = fake_data2)[,1]
+BPlant_survpredict4 <- predict(BPlant_survglm4, newdata = fake_data2)[,1]
+BPlant_survpredict5 <- predict(BPlant_survglm5, newdata = fake_data2)[,1]
+```
+
+```{r}
+plot_survie <- function(data = fake_data2, prediction, var, c1, valc1 = 1, c2, valc2 = "Au", fact, mindat, maxdat) {
+  data %>%
+    mutate(surv_predi = prediction) %>%
+    filter(!!sym(c1) == valc1, !!sym(c2) == valc2) %>%
+    ggplot(aes(x = .data[[var]], y = surv_predi)) +
+    geom_vline(xintercept=maxdat, lty="dotted")+
+    geom_vline(xintercept=mindat, lty="dotted")+
+    geom_line(aes(color = as.factor(.data[[fact]])),show.legend=FALSE) +
+    theme_minimal() +
+    ylim(0, 1)
+}
+
+plot_survie2 <- function(data = fake_data2, prediction, var, c1, valc1 = 1, c2, valc2 = "Au", fact) {
+  data %>%
+    mutate(surv_predi = prediction) %>%
+    filter(!!sym(c1) == valc1, !!sym(c2) == valc2) %>%
+    ggplot(aes(x = .data[[var]], y = surv_predi)) +
+    geom_line(aes(color = as.factor(.data[[fact]])),show.legend = FALSE) +
+    theme_minimal() +
+    ylim(0, 1)+
+      scale_color_brewer(palette = "Spectral", direction = -1)
+}
+```
+
+Survival according to size
+
+Fixing Population and year : variation among ages
+```{r, warning=FALSE,echo=FALSE}
+var <- "Size0Mars"
+c1 <- "year"
+c2 <- "Pop"
+valc2 <- "Au"
+fact <- "Age"
+valc1 <- 2000
+maxdat <- max(centauree_data$Size0Mars[centauree_data$Age==valc1])
+mindat <- min(centauree_data$Size0Mars[centauree_data$Age==valc1])
+
+
+
+wrap_plots(
+  plot_survie2(prediction = APlant_survpredict1, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact),
+  plot_survie2(prediction = APlant_survpredict2, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact),
+  plot_survie2(prediction = APlant_survpredict3, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact),
+  plot_survie2(prediction = APlant_survpredict4, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact),
+  plot_survie2(prediction = APlant_survpredict5, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact)
+)
+```
+
+```{r,warning=FALSE,echo=FALSE}
+wrap_plots(
+  plot_survie2(prediction = BPlant_survpredict1, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact),
+  plot_survie2(prediction = BPlant_survpredict2, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact),
+  plot_survie2(prediction = BPlant_survpredict3, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact),
+  plot_survie2(prediction = BPlant_survpredict4, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact),
+  plot_survie2(prediction = BPlant_survpredict5, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact)
+)
+```
+
+Fixig population : year variation
+
+```{r, warning=FALSE,echo=FALSE}
+var <- "Size0Mars"
+c1 <- "Age"
+c2 <- "Pop"
+valc2 <- "Au"
+fact <- "year"
+valc1 <- 5
+
+wrap_plots(
+  plot_survie(prediction = APlant_survpredict1, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = APlant_survpredict2, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = APlant_survpredict3, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = APlant_survpredict4, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = APlant_survpredict5, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat)
+)
+```
+
+```{r,warning=FALSE,echo=FALSE}
+wrap_plots(
+  plot_survie(prediction = BPlant_survpredict1, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = BPlant_survpredict2, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = BPlant_survpredict3, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = BPlant_survpredict4, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = BPlant_survpredict5, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat)
+)
+```
+
+Fixing year : variation among populations
+```{r, warning=FALSE, echo=FALSE}
+var <- "Size0Mars"
+c1 <- "Age"
+c2 <- "year"
+valc2 <- 2000
+fact <- "Pop"
+
+wrap_plots(
+  plot_survie(prediction = APlant_survpredict1, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = APlant_survpredict2, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = APlant_survpredict3, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = APlant_survpredict4, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = APlant_survpredict5, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat)
+)
+```
+
+```{r,warning=FALSE,echo=FALSE}
+wrap_plots(
+  plot_survie(prediction = BPlant_survpredict1, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = BPlant_survpredict2, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = BPlant_survpredict3, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = BPlant_survpredict4, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = BPlant_survpredict5, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat)
+)
+```
+
+Survival according to age (size is fixed)
+
+Fixing population : among year variation
+
+```{r,warning=FALSE,echo=FALSE}
+var <- "Age"
+c1 <- "Size0Mars"
+c2 <- "Pop"
+valc2 <- "Au"
+fact <- "year"
+valc1 <- 5
+maxdat <- max(centauree_data$Age[centauree_data$Size0Mars==valc1])
+mindat <- min(centauree_data$Age[centauree_data$Size0Mars==valc1])
+
+wrap_plots(
+  plot_survie(prediction = APlant_survpredict1, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = APlant_survpredict2, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = APlant_survpredict3, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = APlant_survpredict4, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = APlant_survpredict5, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat)
+)
+```
+
+```{r,warning=FALSE,echo=FALSE}
+wrap_plots(
+  plot_survie(prediction = BPlant_survpredict1, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = BPlant_survpredict2, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = BPlant_survpredict3, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = BPlant_survpredict4, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = BPlant_survpredict5, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat)
+)
+```
+
+Fixing year : among population variation
+
+```{r,warning=FALSE,echo=FALSE}
+var <- "Age"
+c1 <- "Size0Mars"
+c2 <- "year"
+valc2 <- 2000
+fact <- "Pop"
+
+wrap_plots(
+  plot_survie(prediction = APlant_survpredict1, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = APlant_survpredict2, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = APlant_survpredict3, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = APlant_survpredict4, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = APlant_survpredict5, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat)
+)
+```
+
+```{r,warning=FALSE,echo=FALSE}
+wrap_plots(
+  plot_survie(prediction = BPlant_survpredict1, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = BPlant_survpredict2, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = BPlant_survpredict3, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = BPlant_survpredict4, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat),
+  plot_survie(prediction = BPlant_survpredict5, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat)
+)
+```
