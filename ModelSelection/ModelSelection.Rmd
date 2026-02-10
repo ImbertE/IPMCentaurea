@@ -40,8 +40,7 @@ library(rcdd)
 cl <- makeCluster(10) #A modifier en fonction du nbr de cores
 
 
-setwd("~/Documents/Recherches/centaurea/demographie/IPMCentaurea/")
-IPM_data <- read.csv("data/donneesIPM.csv") #donnees format classique
+IPM_data <- read.csv("../data/donneesIPM.csv") #data usual format for IPM
 #remove individuals Age and Size unknown
 centauree_data <- IPM_data[!is.na(IPM_data$Size0Mars) & !is.na(IPM_data$Age),]
 centauree_data$Age[centauree_data$Age > 8] <- 8
@@ -783,9 +782,7 @@ save(Seedling_survAIC,Seedling_survBIC,Seedling_survmodAIC,Seedling_survmodBIC,
   Plant_survAIC,Plant_survBIC,Plant_survmodAIC,Plant_survmodBIC,
   flowAIC,flowBIC,flowmodAIC,flowmodBIC,
   Growthglm1,Cptlglm1,pltAIC,pltmodAIC,Estbglm,
-  file="ModelSelection/SelectedModels.RData"
+  file="SelectedModels.RData"
 )
-
-
 ```
 
