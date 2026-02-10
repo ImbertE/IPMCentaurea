@@ -16,13 +16,9 @@ François Rousset
 
 Data are stored in the data directory
 
-
 Step 1 
-
 Model selections => create a R object with several selected models for each vital rate
 
-
 Step 2
-
 For each vital rate, there is a specific script to run models and make comparisons
 
