@@ -1,6 +1,6 @@
 ---
 title: "Survival Models Fitted"
-author: "Loïc Pages"
+author: "Loïc Pages & Eric Imbert"
 date: "`r Sys.Date()`"
 output:
   pdf_document: default
@@ -8,6 +8,8 @@ word_document: default
 html_document:
   df_print: paged
 ---
+  
+Print raw data, predicted values from models (see ModelSelection.Rmd) and make a decision for survival models (seedlings and plants)   
   
 ```{r,message=FALSE}
 rm(list=ls())
@@ -19,13 +21,12 @@ library(foreach)
 library(doParallel)
 library(patchwork)
 
-setwd("~/Documents/Recherches/centaurea/demographie/IPMCentaurea/")
-IPM_data <- read.csv("data/donneesIPM.csv")
+IPM_data <- read.csv("../data/donneesIPM.csv")
 centauree_data <- IPM_data[!is.na(IPM_data$Size0Mars) & !is.na(IPM_data$Age),]
 centauree_data$Age[centauree_data$Age > 8] <- 8
 
 spaMM.options(separation_max=70)
-load("ModelSelection/SelectedModels.RData")
+load("SelectedModels.RData")
 ```
 
 ```{r,include=FALSE}
@@ -65,8 +66,6 @@ extractBIC <- function(fit, ntot, N=1){
 ```
 
 # Survival probability
-
-
 ```{r, warning=FALSE}
 survdata <- centauree_data[centauree_data$Flowering!=1 ,]
 
@@ -250,6 +249,8 @@ wrap_plots(
   plot_survie1(prediction = BSeedling_survpredict5, var=var, c1=c1, valc1=valc1,  fact=fact, maxdat = maxdat, mindat = mindat)
 )
 ```
+
+Best Model ASeedling_survglm1
 
 Plant survival (Age >1)
 
@@ -509,3 +510,8 @@ wrap_plots(
   plot_survie(prediction = BPlant_survpredict5, var=var, c1=c1, valc1=valc1, c2=c2, valc2=valc2, fact=fact, maxdat = maxdat, mindat = mindat)
 )
 ```
+
+Models APlant_Survglm1 and APlant_Survglm2 => very similar
+Keep model APlant_Survglm2 => easier to interpret
+
+
