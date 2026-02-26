@@ -9,9 +9,9 @@ html_document:
   df_print: paged
 ---
   
-Print raw data, predicted values from models (see ModelSelection.Rmd) and make a decision for survival models (seedlings and plants)   
+Plot raw data, predicted values from models (see ModelSelection.Rmd) and make a decision for survival models (seedlings and plants)   
   
-```{r,message=FALSE}
+```{r,message=FALSE, echo=FALSE}
 rm(list=ls())
 library(knitr)
 library(spaMM)
@@ -27,9 +27,7 @@ centauree_data$Age[centauree_data$Age > 8] <- 8
 
 spaMM.options(separation_max=70)
 load("SelectedModels.RData")
-```
 
-```{r,include=FALSE}
 annees <- 1995:2022
 populations <- c("E2","E1","Au","Po","Pe","Cr")
 

@@ -7,20 +7,33 @@ output:
   word_document: default
 ---
 
-First, graphical representations of raw data and the final selected models for each vital rate
-Summary of each model and explicit formula for splines
+First, graphical representations of raw data and the final selected model for each vital rate
+Summary of each model and (quasi) explicit formula for splines
+
+Final step : each model is renamed and a R object is created to be imported in the IPM script
 
 
 Import data, models
 
 ```{r,message=FALSE}
 rm(list=ls())
+
 library(knitr)
 library(spaMM)
 library(tidyverse)
 library(foreach)
 library(doParallel)
 library(splines)
+
+### Required packages, including  `SplinesUtils` not on CRAN
+if ( ! requireNamespace("SplinesUtils", quietly=TRUE)) {
+  if ( ! requireNamespace("devtools", quietly=TRUE)) install.packages("devtools")
+  devtools::install_github("ZheyuanLi/SplinesUtils")
+}
+
+#setpath and #getdefSplinesAsPoly
+pwd <- paste0(getwd(),"/")
+source(paste0(pwd, "SplinesAsPolySpaMM.R"))
 
 IPM_data <- read.csv("../data/donneesIPM.csv")
 centauree_data <- IPM_data[!is.na(IPM_data$Size0Mars) & !is.na(IPM_data$Age),]
@@ -109,37 +122,32 @@ survdata1 <- survdata[survdata$Age==1,]
 result <- function(combi) {
   effect_formula <- paste(unlist(combi), collapse = "+")
   formula <- as.formula(paste("Survie", "~", effect_formula))
-  fit <- fitme(formula, data = survdata1, family=binomial, method = "PQL/L")
+  fit <- fitme(formula, survdata1, family=binomial, method = "PQL/L")
 }
 
-summary(Seedling_surv)
-
 Seedling_surv <- result(Seedling_survmodAIC[[1]])
+summary(Seedling_surv)
+SplinesAsPolySpaMM(Seedling_surv, "bs(Size0Mars, df = 4, degree = 2)")
+
+Seedling_survpredict <- predict(Seedling_surv, survdata1, type="response")
+
 survdata1 %>%
+  mutate(predict = Seedling_survpredict) %>%
   group_by(Size0Mars) %>%
-  mutate(survivalProba = sum(Survie, na.rm = TRUE) / n()) %>% 
+  mutate(survivalProba = sum(Survie, na.rm = TRUE) / n(), predict=mean(predict)) %>% 
   ggplot(aes(x = Size0Mars, y = Survie)) +
   geom_count(alpha = 0.6) +  # Points dimensionnés selon la fréquence
   geom_point(aes(y = survivalProba), color = "red", size = 0.5) +
   geom_line(aes(y = survivalProba), color = "red") +
-   labs(title = "Relationship between size and survival",
+  geom_line(aes(y=predict), color="green") +
+     labs(title = "Relationship between size and survival",
        x = "Size",
        y = "Survival",
        subtitle = "Grey points : observed survival (0/1)
-Red points : mean value for each size") +
+Red line : mean value for each size
+Green line : predicted value") +
   ylim(0, 1) +
   theme_minimal()
-
-
-plot(Seedling_survpredict, xlab="Size", ylab="Prediced value for Survival probability", type="l", col="green")
-```
-
-
-
-
-```{r}
-
-
 ```
 
 
@@ -147,1827 +155,308 @@ plot(Seedling_survpredict, xlab="Size", ylab="Prediced value for Survival probab
 
 
 Age > 1
+Selected model for plant survival Plant_survAIC[[2]]
 ```{r,echo=FALSE, out.width="50%",warning=FALSE}
 survdata2 <- survdata[survdata$Age>1,]
 
+result <- function(combi) {
+  effect_formula <- paste(unlist(combi), collapse = "+")
+  formula <- as.formula(paste("Survie", "~", effect_formula))
+  fit <- fitme(formula, survdata2, family=binomial, method = "PQL/L")
+}
+
+Plant_surv <- result(Plant_survmodAIC[[2]])
+summary(Plant_surv)
+SplinesAsPolySpaMM(Plant_surv,"bs(Age, degree = 3, knots = 6.5)")
+SplinesAsPolySpaMM(Plant_surv,"bs(Size0Mars, df = 3, degree = 2)")
+
+Plant_survpredict <- predict(Plant_surv, survdata2, type="response")
+
 survdata2 %>%
+  mutate(predict = Plant_survpredict) %>%
   group_by(Size0Mars) %>%
-  mutate(survivalProba = sum(Survie, na.rm = TRUE) / n()) %>% 
+  mutate(survivalProba = sum(Survie, na.rm = TRUE) / n(), predict=mean(predict)) %>% 
   ggplot(aes(x = Size0Mars, y = Survie)) +
   geom_count(alpha = 0.6) +  # Points dimensionnés selon la fréquence
   geom_point(aes(y = survivalProba), color = "red", size = 0.5) +
   geom_line(aes(y = survivalProba), color = "red") +
+  geom_line(aes(y=predict), color="green") +
   labs(title = "Relationship between size and survival",
        x = "Size",
        y = "Survival",
        subtitle = "Grey points : observed survival (0/1)
-Red points : mean value for each size") +
+Red line : mean value for each size
+Green line : predicted value for each size") +
   ylim(0, 1) +
   theme_minimal()
-
+  
 survdata2 %>%
+  mutate(predict = Plant_survpredict) %>%
   group_by(Age) %>%
-  mutate(survivalProba = sum(Survie, na.rm = TRUE) / n()) %>% 
+  mutate(survivalProba = sum(Survie, na.rm = TRUE) / n(), predict=mean(predict)) %>% 
   ggplot(aes(x = Age, y = Survie)) +
   geom_count(alpha = 0.6) +  # Points dimensionnés selon la fréquence
   geom_point(aes(y = survivalProba), color = "red", size = 0.5) +
   geom_line(aes(y = survivalProba), color = "red") +
+  geom_line(aes(y=predict), color="green") +
  labs(title = "Relationship between age and survival",
        x = "Age",
        y = "Survival",
        subtitle = "Grey points : observed survival (0/1)
-Red points : mean value for each age") +  ylim(0, 1) +
-  theme_minimal()
-```
-
-
-Flowering Probability
-
-
-```{r,echo=FALSE,out.width="50%"}
-centauree_data %>%
-  group_by(Size0Mars) %>%
-  mutate(floweringProba = sum(Flowering, na.rm = TRUE) / n()) %>% 
-  ggplot(aes(x = Size0Mars, y = Flowering)) +
-  geom_count(alpha = 0.6) +  
-  geom_point(aes(y = floweringProba), color = "red", size = 0.5) +
-  geom_line(aes(y = floweringProba), color = "red") +
-  labs(title = "Relationship between flowering probability and size",
-    x = "Size (cm)",
-    y = "Flowering",
-    subtitle = "Grey points : observed reproduction (0/1)
-Red points : mean value for each size") +
+Red line : mean value for each age
+Green line : predicted value for each age") +
   ylim(0, 1) +
   theme_minimal()
-
-centauree_data %>%
-  group_by(Age) %>%
-  mutate(floweringProba = sum(Flowering, na.rm = TRUE) / n()) %>% 
-  ggplot(aes(x = Age, y = Flowering)) +
-  geom_count(alpha = 0.6) +  
-  geom_point(aes(y = floweringProba), color = "red", size = 0.5) +
-  geom_line(aes(y = floweringProba), color = "red") +
-  labs(title = "Relationship between flowering probability and age",
-    x = "Age",
-    y = "Flowering",
-    subtitle = "Grey points : observed reproduction (0/1)
-Red points : mean value for each age") +
-  ylim(0, 1) +
-  theme_minimal()
-```
-
-
-
-Seedling Size 
-
-
-```{r,echo=FALSE,out.width="50%"}
-plantule_data <- centauree_data[centauree_data$Age==1,]
-
-# Seedling size / year
-plantule_data %>% 
-  ggplot(aes(x = year, y = Size0Mars)) +
-  geom_count(alpha=0.6) +
-  labs(title = "Seedling size according years",
-    x = "Year",
-    y = "Seedling size") +
-  theme_minimal()
-
-# Seedling size / population
-plantule_data %>% 
-  ggplot(aes(x = Pop, y = Size0Mars)) +
-  geom_count(alpha=0.6) +
-  labs(title = "Seedling size according populations",
-    x = "Population",
-    y = "Seedling size") +
-  theme_minimal()
-
-plantule_data %>% 
-  ggplot(aes(x=Size0Mars))+
-  geom_histogram()+
-  xlim(0,15)
 ```
 
 
 Growth
+Selected model Growthglm1
 
-```{r,echo=FALSE,out.width="50%"}
+```{r}
 growthdata <- centauree_data[!is.na(centauree_data$Size1Mars), ]
 growthdata <- growthdata[growthdata$Size1Mars != 0, ]
+Growthpredict <- predict(Growthglm1, newdata = growthdata)[,1]
+Growthpredict <- exp(log(Growthpredict)/0.4343354) #back transformation 
+
 
 growthdata %>%
+  mutate(predicted_value = Growthpredict) %>%
   ggplot(aes(y = Size1Mars, x = Size0Mars)) +
   geom_count(alpha=0.5) +
-  labs(title = "Relationship between size at t+1 and size at t",
-       y = "Size t+1",
-       x = "Size t") +
-  theme_minimal()
-
-growthdata %>%
-  ggplot(aes(y = log(Size1Mars), x = Size0Mars)) +
-  geom_count(alpha=0.5) +
-  labs(title = "Relationship between log(Size t+1) and log(Size at t)",
-       y = "log(Size t+1)",
-       x = "log(Size t") +
+  geom_point(aes(y=predicted_value), col="green") +
+  labs(title = "Relation entre le taux de croissance et la taille",
+       y = "Taille à t+1",
+       x = "Taille à t",
+     subtitle = "Grey points : observed survival (0/1)
+   Green points : predicted values") +
   theme_minimal()
 
 ```
 
-```{r}
-qplot(growthdata$Size1Mars)
-qplot((growthdata$Size1Mars**0.5 - 1)/0.5)
-qplot(growthdata$Size1Mars**0.5)
-qplot(log(growthdata$Size1Mars))
 
-```
-
-
-## Fecundity
-
-```{r,echo=FALSE,out.width="50%",warning=FALSE}
-cptl_data <- IPM_data[!is.na(centauree_data$Capitule),]
-cptl_data <- cptl_data[!cptl_data$Flowering==0,]
-
-# Nombre de capitule / taille 
-cptl_data %>% 
-  
-  ggplot(aes(x=Size0Mars,y=Capitule))+
-  geom_point() +
-  labs(title = "Relationship between number of seed heads and size",
-       x = "Size (cm)",
-       y = "Number of seed heads") +
-  theme_minimal()
-
-# Nombre de capitule / année 
-cptl_data %>% 
-  ggplot(aes(x=year,y=Capitule))+
-  geom_point() +
-  labs(title = "Relationship between number of seed heads and year of reproduction",
-       x = "Year",
-       y = "Number of seed heads") +
-  theme_minimal()
-```
-
-
-# Modèles par AIC
-
-
-```{r,include=FALSE}
-load("IPM/ModelsAIC")
-
-summary(Survglm11)
-summary(Survglm12)
-summary(Flowglm1)
-summary(Pltglm1)
-summary(Cptlglm1)
-summary(Growthglm1)
-summary(Growthglm1gamma)
-```
-
-test de goodness of fit
-```{r}
-gof_binom <- function(model) {
-  series_gof <- NULL
-  for(i in 1:1000) {
-    series_gof[i] <- gof(model)$p.value
-  }
-  return(mean(series_gof))
-}
-
-gof_binom(Survglm11)
-gof_binom(Survglm12)
-gof_binom(Flowglm2)
-gof(Pltglm1)
-gof(Cptlglm1)
-gof(Growthglm1)
-gof(Growthglm1gamma)
-gof(Growthglm2)
-gof(Estbglm1)
-```
-
-  
-```{r,include=FALSE}
-Survpredict11 <- predict(Survglm11, newdata = fake_data1)[,1]
-Survpredict12 <- predict(Survglm12, newdata = fake_data2)[,1]
-Flowpredict1 <- predict(Flowglm1, newdata = fake_data)[,1]
-Pltpredict1 <- predict(Pltglm1, newdata = fake_data)[,1]
-Cptlpredict1 <- predict(Cptlglm1, newdata = fake_data)[,1]
-Growthpredict1 <- predict(Growthglm1, newdata = fake_data)[,1]
-Growthpredict1gamma <- predict(Growthglm1gamma, newdata = fake_data)[,1]
-Growthpredict2 <- (predict(Growthglm2, newdata = fake_data)[,1])**(1/0.4343354)
-Estbpredict <- predict(Estbglm2, newdata = fake_dataEstb)[,1]
-```
-
-## Survie plantules
-
-```{r,echo=FALSE,warning=FALSE,out.width="50%"}
-#Survie plantules
-resSurv1 <- get_respVar(Survglm11,newdata = fake_data1)
-
-fake_data1 %>%
-  mutate(surv = Survpredict11)%>%
-  group_by(Size0Mars,year) %>%
-  mutate(surv_predi = mean(surv, na.rm = TRUE),
-         .group="drop") %>%
-  ggplot(aes(x = Size0Mars, y = surv_predi)) +
-  geom_count(data=survdata1,aes(x=Size0Mars,y=Survie),alpha = 0.5) +
-  geom_line(aes(color=as.factor(year)),show.legend = FALSE) +
-  theme_bw()+
-  ylim(0, 1) +
-  xlim(0,15)+
-  labs(x = "Size",
-      y = "Seedling survival probability")+ 
-  theme(
-    axis.title.x = element_text(size = 15),  # Taille du titre axe X
-    axis.title.y = element_text(size = 15),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 13),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 13)    # Taille des graduations axe Y
-  )
-
-```
-
-## Survie rosettes
-
-```{r,echo=FALSE,warning=FALSE,out.width="50%"}
-#Survie rosettes
-
-fake_data2 %>%
-  mutate(surv = Survpredict12) %>%
-  filter(Age==c(2,8)) %>%
-  group_by(Size0Mars,Pop,Age) %>%
-  mutate(surv_predi = mean(surv),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = surv_predi)) +
-  facet_wrap(~Age, labeller = as_labeller(c('2'="age 2",'8'="age 8")))+
-  geom_count(data=survdata2[survdata2$Age %in% c(2,8),],aes(x=Size0Mars,y=Survie),alpha = 0.3) +
-  geom_line(aes(color = as.factor(Pop)),show.legend = FALSE) +
-  theme_bw()+
-  ylim(0, 1) +
-  labs(x = "Size",
-      y = "Rosette survival probability",
-      color = "Population")+
-    theme(
-    axis.title.x = element_text(size = 15),  # Taille du titre axe X
-    axis.title.y = element_text(size = 15),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 14),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 14)    # Taille des graduations axe Y
-  )+
-   scale_color_viridis_d(option = "plasma")
-
-
-library(RColorBrewer)
-couleurs_inversées <- rev(brewer.pal(8, "Spectral"))
-couleurs <- couleurs_inversées[2:8]
-
-fake_data2 %>%
-  mutate(surv = Survpredict12) %>%
-  group_by(Size0Mars,Age) %>%
-  mutate(surv_predi = mean(surv),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = surv_predi)) +
-  geom_line(aes(color = as.factor(Age)),size=0.75) +
-    geom_count(data=survdata2[survdata2$Age>1,],aes(x=Size0Mars,y=Survie,color=as.factor(Age)),alpha = 0.3) +
-  theme_bw()+
-  ylim(0, 1) +
-  labs(x = "Size",
-      y = "Rosette survival probability",
-      color = "Age")+
-    theme(
-    axis.title.x = element_text(size = 15),  # Taille du titre axe X
-    axis.title.y = element_text(size = 15),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 14),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 14),    # Taille des graduations axe Y
-          legend.key.size = unit(0.4, "cm"),     # Réduit la taille des clés (symboles)
-  legend.spacing.y = unit(0.2, "cm"),    # Réduit l'espacement vertical
-  legend.margin = margin(2, 2, 2, 2),    # Réduit les marges internes de la légende
-  legend.box.margin = margin(2, 2, 2, 2)
-  )+
-  scale_color_manual(values = couleurs)
-
-fake_data2 %>%
-  mutate(surv = Survpredict12) %>%
-  filter(Age==c(2,8)) %>%
-  group_by(Size0Mars,year,Age) %>%
-  mutate(surv_predi = mean(surv),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = surv_predi)) +
-  facet_wrap(~Age, labeller = as_labeller(c('2'="age 2",'8'="age 8")))+
-  geom_count(data=survdata2[survdata2$Age %in% c(2,8),],aes(x=Size0Mars,y=Survie),alpha = 0.3) +
-  geom_line(aes(color = as.factor(year)),show.legend = FALSE) +
-  theme_bw()+
-  ylim(0, 1) +
-  labs(x = "Size",
-      y = "Survival probability",
-      color = "Year")+
-    theme(
-    axis.title.x = element_text(size = 15),  # Taille du titre axe X
-    axis.title.y = element_text(size = 15),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 14),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 14)    # Taille des graduations axe Y
-  )
-
-fake_data2 %>%
-  mutate(surv = Survpredict12) %>%
-  filter(Age==5) %>% 
-  group_by(Size0Mars,Age) %>%
-  mutate(surv_predi = mean(surv),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = surv_predi)) +
-  geom_line(color = "black",size=1) +
-    geom_count(data=survdata2[survdata2$Age==3,],aes(x=Size0Mars,y=Survie),color="black",alpha=0.3) +
-  theme_bw()+
-  ylim(0, 1) +
-  labs(x = "Size",
-      y = "Rosette survival probability",
-      color = "Age")+
-    theme(
-    axis.title.x = element_text(size = 15),  # Taille du titre axe X
-    axis.title.y = element_text(size = 15),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 14),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 14),    # Taille des graduations axe Y
-          legend.key.size = unit(0.4, "cm"),     # Réduit la taille des clés (symboles)
-  legend.spacing.y = unit(0.2, "cm"),    # Réduit l'espacement vertical
-  legend.margin = margin(2, 2, 2, 2),    # Réduit les marges internes de la légende
-  legend.box.margin = margin(2, 2, 2, 2)
-  )+
-  scale_color_manual(values = couleurs)
-
-```
-
-
-```{r,echo=FALSE,warning=FALSE,out.width="50%"}
-#Survie rosettes
-# resSurv2 <- residVar(Survglm12,newdata = fake_data2)
-sdata <- survdata2
-fake_data2 %>%
-  mutate(surv = Survpredict12)%>%
-  filter(Size0Mars==5) %>% 
-  group_by(Age,Pop) %>% 
-  summarise(surv_predi = mean(surv),
-            .groups = "drop") %>% 
-  ggplot(aes(x = Age, y = surv_predi)) +
-  geom_count(data=survdata2,aes(x=Age,y=Survie),alpha = 0.5) +
-  geom_line(aes(color = as.factor(Pop)))+
-  theme_bw() +
-  ylim(0, 1) +
-  labs( x = "Age",
-      y = "Rosette survival probability",
-      fill = "Population",
-      color = "Population")+
-   scale_color_viridis_d(option = "plasma")+
-      theme(
-    axis.title.x = element_text(size = 15),  # Taille du titre axe X
-    axis.title.y = element_text(size = 15),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 13),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 13) ,   # Taille des graduations axe Y
-      legend.key.size = unit(0.4, "cm"),     # Réduit la taille des clés (symboles)
-  legend.spacing.y = unit(0.2, "cm"),    # Réduit l'espacement vertical
-  legend.margin = margin(2, 2, 2, 2),    # Réduit les marges internes de la légende
-  legend.box.margin = margin(2, 2, 2, 2)
-  )
-
-fake_data2 %>%
-  mutate(surv = Survpredict12)%>%
-    filter(Size0Mars==5) %>% 
-  group_by(Age,year) %>% 
-  summarise(surv_predi = mean(surv),
-            .groups = "drop") %>% 
-  ggplot(aes(x = Age, y = surv_predi)) +
-  geom_count(data=survdata2,aes(x=Age,y=Survie),alpha = 0.5) +
-  geom_line(aes(color = as.factor(year)),show.legend = FALSE)+
-  theme_bw() +
-  ylim(0, 1) +
-  labs( x = "Age",
-      y = "Rosette survival probability",
-      fill = "Year",
-      color = "Year")+
-      theme(
-    axis.title.x = element_text(size = 15),  # Taille du titre axe X
-    axis.title.y = element_text(size = 15),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 13),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 13),    # Taille des graduations axe Y
-      legend.key.size = unit(0.4, "cm"),     # Réduit la taille des clés (symboles)
-  legend.spacing.y = unit(0.2, "cm"),    # Réduit l'espacement vertical
-  legend.margin = margin(2, 2, 2, 2),    # Réduit les marges internes de la légende
-  legend.box.margin = margin(2, 2, 2, 2)
-  )
-
-```
-
-## Floraison
-
-```{r,echo=FALSE,warning=FALSE,out.width="50%"}
-# #Floraison
-# resFlow <- get_predVar(Flowglm1,newdata = fake_data)
-#   geom_ribbon(aes(ymin = flow_predi-resVar, ymax = flow_predi+resVar, alpha=0.08,fill=as.factor(Age)))+
-
-fake_data %>%
-  mutate(flow_predi = Flowpredict1) %>%
-  group_by(Size0Mars, Age) %>%
-  summarise(flow_predi = mean(flow_predi),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = flow_predi)) +
-  geom_count(data=centauree_data,aes(x=Size0Mars,y=Flowering,col=as.factor(Age)),alpha = 0.6,show.legend = FALSE) +
-  geom_line(aes(color = as.factor(Age)),size=0.75) +
-  theme_bw()+
-  ylim(0, 1) +
-  labs(x = "Size",
-      y = "Flowering probability",
-      color = "Age")+
-  scale_color_brewer(palette = "Spectral", direction = -1) +
-    theme(
-    axis.title.x = element_text(size = 16),  # Taille du titre axe X
-    axis.title.y = element_text(size = 16),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 14),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 14)    # Taille des graduations axe Y
-  )
-  
-fake_data %>%
-  mutate(flow_predi = Flowpredict1)%>%
-  filter(Age==c(2,4,8)) %>% 
-  group_by(Size0Mars, Pop, Age) %>%
-  summarise(flow_predi = mean(flow_predi),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = flow_predi)) +
-  facet_wrap(vars(Age), labeller = as_labeller(c('2'="age2",'4'="age4",'8'="age8")))+
-  geom_line(aes(color = as.factor(Pop))) +
-  theme_bw()+
-  ylim(0, 1) +
-  labs(x = "Size",
-      y = "Flowering probability",
-      fill = "Populations",
-      color = "Populations")
-
-fake_data %>%
-  mutate(flow_predi = Flowpredict1) %>%
-  filter(Age==5) %>% 
-  group_by(Size0Mars, Age) %>%
-  summarise(flow_predi = mean(flow_predi),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = flow_predi)) +
-  geom_count(data=centauree_data,aes(x=Size0Mars,y=Flowering),alpha = 0.6,show.legend = FALSE) +
-  geom_line(size=1) +
-  theme_bw()+
-  ylim(0, 1) +
-  labs(x = "Size",
-      y = "Flowering probability",
-      color = "Age")+
-  scale_color_brewer(palette = "Spectral", direction = -1) +
-    theme(
-    axis.title.x = element_text(size = 16),  # Taille du titre axe X
-    axis.title.y = element_text(size = 16),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 14),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 14)    # Taille des graduations axe Y
-  )
-```
-
-```{r,echo=FALSE,warning=FALSE,out.width="50%"}
-#Floraison
-resFlow <- residVar(Flowglm1,newdata = fake_data)
-
-fake_data %>%
-  mutate(flow_predi = Flowpredict1) %>%
-  filter(Size0Mars==10) %>% 
-  group_by(Pop, Age) %>%
-  summarise(flow_predi = mean(flow_predi),
-            .groups = "drop") %>%
-  ggplot(aes(x = Age, y = flow_predi)) +
-  geom_line(aes(color = as.factor(Pop))) +
-  theme_bw() +
-  ylim(0, 1) +
-  labs(x = "Age",
-      y = "Flowering probability",
-      fill = "Populations",
-      color = "Populations")+
-     scale_color_viridis_d(option = "plasma")+
-      theme(
-    axis.title.x = element_text(size = 15),  # Taille du titre axe X
-    axis.title.y = element_text(size = 15),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 13),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 13)    # Taille des graduations axe Y
-  )
-  
-```
-
-effet de la variation de l'intercept sur la proba de fleurir et donc de la taille à floraison
-```{r}
-Beta <- c(-2,0,2,4)
-
-fake_data %>%
-  mutate(flow_predi = plogis(predict(Flowglm1, newdata = fake_data, allow.new.levels = T, type = "link")[,1] + Beta[1])
-) %>%
-  group_by(Size0Mars, Age) %>%
-  summarise(flow_predi = mean(flow_predi),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = flow_predi)) +
-  geom_count(data=centauree_data,aes(x=Size0Mars,y=Flowering,col=as.factor(Age)),alpha = 0.6,show.legend = FALSE) +
-  geom_line(aes(color = as.factor(Age)),linewidth=0.75) +
-  theme_bw()+
-  ylim(0, 1) +
-  labs(x = "Size",
-      y = "Flowering probability",
-      color = "Age")+
-  scale_color_brewer(palette = "Spectral", direction = -1) +
-    theme(
-    axis.title.x = element_text(size = 16),  # Taille du titre axe X
-    axis.title.y = element_text(size = 16),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 14),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 14)    # Taille des graduations axe Y
-  )
-
-fake_data %>%
-  mutate(flow_predi = plogis(predict(Flowglm1, newdata = fake_data, allow.new.levels = T, type = "link")[,1] + Beta[2])
-) %>%
-  group_by(Size0Mars, Age) %>%
-  summarise(flow_predi = mean(flow_predi),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = flow_predi)) +
-  geom_count(data=centauree_data,aes(x=Size0Mars,y=Flowering,col=as.factor(Age)),alpha = 0.6,show.legend = FALSE) +
-  geom_line(aes(color = as.factor(Age)),linewidth=0.75) +
-  theme_bw()+
-  ylim(0, 1) +
-  labs(x = "Size",
-      y = "Flowering probability",
-      color = "Age")+
-  scale_color_brewer(palette = "Spectral", direction = -1) +
-    theme(
-    axis.title.x = element_text(size = 16),  # Taille du titre axe X
-    axis.title.y = element_text(size = 16),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 14),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 14)    # Taille des graduations axe Y
-  )
-
-fake_data %>%
-  mutate(flow_predi = plogis(predict(Flowglm1, newdata = fake_data, allow.new.levels = T, type = "link")[,1] + Beta[3])
-) %>%
-  group_by(Size0Mars, Age) %>%
-  summarise(flow_predi = mean(flow_predi),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = flow_predi)) +
-  geom_count(data=centauree_data,aes(x=Size0Mars,y=Flowering,col=as.factor(Age)),alpha = 0.6,show.legend = FALSE) +
-  geom_line(aes(color = as.factor(Age)),linewidth=0.75) +
-  theme_bw()+
-  ylim(0, 1) +
-  labs(x = "Size",
-      y = "Flowering probability",
-      color = "Age")+
-  scale_color_brewer(palette = "Spectral", direction = -1) +
-    theme(
-    axis.title.x = element_text(size = 16),  # Taille du titre axe X
-    axis.title.y = element_text(size = 16),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 14),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 14)    # Taille des graduations axe Y
-  )
-
-fake_data %>%
-  mutate(flow_predi = plogis(predict(Flowglm1, newdata = fake_data, allow.new.levels = T, type = "link")[,1] + Beta[4])
-) %>%
-  group_by(Size0Mars, Age) %>%
-  summarise(flow_predi = mean(flow_predi),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = flow_predi)) +
-  geom_count(data=centauree_data,aes(x=Size0Mars,y=Flowering,col=as.factor(Age)),alpha = 0.6,show.legend = FALSE) +
-  geom_line(aes(color = as.factor(Age)),linewidth=0.75) +
-  theme_bw()+
-  ylim(0, 1) +
-  labs(x = "Size",
-      y = "Flowering probability",
-      color = "Age")+
-  scale_color_brewer(palette = "Spectral", direction = -1) +
-    theme(
-    axis.title.x = element_text(size = 16),  # Taille du titre axe X
-    axis.title.y = element_text(size = 16),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 14),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 14)    # Taille des graduations axe Y
-  )
-```
-
-## Croissance
-
-
-```{r}
-# (Growthglm2 <- fitme(I(Size1Mars**0.4343354) ~ 1 +
-#                       poly(I(Size0Mars**0.4343354),3) + bs(Age,degree=2,knots=6.5) +
-#                       (Age|year) + (1|Pop),
-#                     resid.model = ~ log(Size0Mars)+log(Age)+
-#                      (1|year) + (1|Pop),
-#                     data=growthdata))
-
-Growthpredict2 <- predict(Growthglm2, newdata = fake_data)[,1]
-
-plot(predict(Growthglm2)[,1],
-     residuals.HLfit(Growthglm2,type="deviance"))
-plot(residVar(Growthglm3, which="var"),
-     residuals.HLfit(Growthglm2,type="response"))
-```
-
-
-```{r}
-
-growthdata %>%
-  mutate(s1_predi = predict(Growthglm1)[,1]) %>%
-  ggplot(aes(x = s1_predi)) +
-  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "black") +
-  geom_point(aes(y=Size1Mars, color=as.factor(Age)),show.legend = FALSE,alpha=0.3) +
-  # geom_point(aes(y=s1_obs),color="blue") +
-    labs(x = "Predicted size(t+1)",
-      y = "Observed size(t+1)",
-      fill = "Age",
-      color = "Age")+
-    scale_color_brewer(palette = "Spectral", direction = -1)+
-  theme_bw() +
-  xlim(0,25)
-
-growthdata %>%
-  mutate(s1_predi = predict(Growthglm1gamma)[,1]) %>%
-  ggplot(aes(x = s1_predi)) +
-  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "black") +
-  geom_point(aes(y=Size1Mars, color=as.factor(Age)),show.legend=FALSE, alpha=0.3) +
-  # geom_point(aes(y=s1_obs),color="blue") +
-    labs(x = "Predicted size(t+1)",
-      y = "Observed size(t+1)",
-      fill = "Age",
-      color = "Age")+
-    scale_color_brewer(palette = "Spectral", direction = -1)+
-  theme_bw() +
-  xlim(0,25)
-
-growthdata %>%
-  mutate(s1_predi = (predict(Growthglm2)[,1])^(1/0.4343354)) %>%
-  ggplot(aes(x = s1_predi)) +
-  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "black") +
-  geom_point(aes(y=Size1Mars, color=as.factor(Age)),show.legend=FALSE, alpha=0.3) +
-  # geom_point(aes(y=s1_obs),color="blue") +
-    labs(x = "Predicted size(t+1)",
-      y = "Observed size(t+1)",
-      fill = "Age",
-      color = "Age")+
-    scale_color_brewer(palette = "Spectral", direction = -1)+
-  theme_bw() +
-  xlim(0,25)
-```
-
-$\log(var)=constante \approx log(phi)+2 \log(mu)$
-```{r}
-resvarGamma <- residVar(Growthglm1gamma)
-
-growthdata %>% mutate(resvar = resvarGamma) %>% 
-  ggplot(aes(x = Size0Mars, y = resvar)) +
-  geom_point(aes(color=as.factor(Age)),show.legend=FALSE, alpha=0.3) +
-  theme_bw()+
-  labs(x = "Size(t)",
-      y = "Growth residual variance",
-      fill = "Age",
-      color = "Age")+
-    scale_color_brewer(palette = "Spectral", direction = -1) 
-```
-
-gaussian
-```{r,echo=FALSE,warning=FALSE,out.width="50%"}
-
-fake_data %>%
-  mutate(s1_predi = Growthpredict1) %>%
-  group_by(Size0Mars, Age) %>%
-  summarise(s1_predi = mean(s1_predi),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = s1_predi)) +
-  geom_count(data=growthdata,aes(x=Size0Mars,y=Size1Mars,colour = as.factor(Age)),alpha = 0.5,show.legend = FALSE) +
-  geom_abline(lty="dashed")+
-  geom_line(aes(color = as.factor(Age)),size=0.7) +
-  theme_bw()+
-  labs(x = "Size(t)",
-      y = "Size(t+1)",
-      fill = "Age",
-      color = "Age")+
-    scale_color_brewer(palette = "Spectral", direction = -1) +
-    theme(
-    axis.title.x = element_text(size = 16),  # Taille du titre axe X
-    axis.title.y = element_text(size = 16),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 14),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 14)    # Taille des graduations axe Y
-  )
-
-
-
-fake_data %>%
-  mutate(s1_predi = Growthpredict1) %>%
-  filter(Age==c(1,4,8)) %>% 
-  group_by(Size0Mars, year, Age) %>%
-  mutate(s1_predi = mean(s1_predi),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = s1_predi)) +
-  facet_wrap(vars(Age), labeller = as_labeller(c('1'="age 1",'4'="age 4",'8'="age 8")),scales="free_x")+
-  geom_line(aes(color = as.factor(year)),show.legend = FALSE) +
-  geom_abline(lty="dashed")+
-  theme_bw()+
-  labs(x = "Size(t)",
-      y = "Size(t+1)",
-      fill = "Year",
-      color = "Year")+
-  theme(legend.text = element_text(size = 4),
-          legend.key.size = unit(0.4, "cm"),
-          legend.title = element_text(size = 8))
-
-fake_data %>%
-  mutate(s1_predi = Growthpredict1) %>%
-  group_by(Size0Mars, Pop) %>%
-  summarise(s1_predi = mean(s1_predi),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = s1_predi)) +
-  # geom_count(data=growthdata,aes(x=Size0Mars,y=Size1Mars,colour = as.factor(Pop)),alpha = 0.5,show.legend = FALSE) +
-  geom_abline(lty="dashed")+
-  geom_line(aes(color = as.factor(Pop)),size=0.7) +
-  theme_bw()+
-  labs(x = "Size(t)",
-      y = "Size(t+1)",
-      fill = "Pop",
-      color = "Pop")+
-   scale_color_viridis_d(option = "plasma")+
-    theme(
-    axis.title.x = element_text(size = 16),  # Taille du titre axe X
-    axis.title.y = element_text(size = 16),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 14),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 14)    # Taille des graduations axe Y
-  )
-
-```
-
-
-```{r,echo=FALSE,warning=FALSE,out.width="50%"}
-fake_data %>% mutate(sdgrow = exp(1.1013346+0.5553254*log(Size0Mars)-0.1231723*log(Age))) %>% 
-  group_by(Size0Mars, Age) %>%
-  summarise(sd_predi = mean(sdgrow),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = sd_predi)) +
-  geom_line(aes(color = as.factor(Age))) +
-  theme_bw()+
-  labs(x = "Size(t)",
-      y = "Growth residual variance",
-      fill = "Age",
-      color = "Age")+
-    scale_color_brewer(palette = "Spectral", direction = -1) +
-    theme(
-    axis.title.x = element_text(size = 15),  # Taille du titre axe X
-    axis.title.y = element_text(size = 15),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 13),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 13)    # Taille des graduations axe Y
-  )
-```
-
-gaussien avec transformation
-```{r,echo=FALSE,warning=FALSE,out.width="50%"}
-
-fake_data %>%
-  mutate(s1_predi = Growthpredict2) %>%
-  group_by(Size0Mars, Age) %>%
-  summarise(s1_predi = mean(s1_predi),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = s1_predi)) +
-  geom_count(data=growthdata,aes(x=Size0Mars,y=Size1Mars,colour = as.factor(Age)),alpha = 0.5,show.legend = FALSE) +
-  geom_abline(lty="dashed")+
-  geom_line(aes(color = as.factor(Age)),size=0.7) +
-  theme_bw()+
-  labs(x = "Size(t)",
-      y = "Size(t+1)",
-      fill = "Age",
-      color = "Age")+
-    scale_color_brewer(palette = "Spectral", direction = -1) +
-    theme(
-    axis.title.x = element_text(size = 16),  # Taille du titre axe X
-    axis.title.y = element_text(size = 16),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 14),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 14)    # Taille des graduations axe Y
-  )
-
-
-
-fake_data %>%
-  mutate(s1_predi = Growthpredict2) %>%
-  filter(Age==c(1,4,8)) %>% 
-  group_by(Size0Mars, year, Age) %>%
-  mutate(s1_predi = mean(s1_predi),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = s1_predi)) +
-  facet_wrap(vars(Age), labeller = as_labeller(c('1'="age 1",'4'="age 4",'8'="age 8")),scales="free_x")+
-  geom_line(aes(color = as.factor(year)),show.legend = FALSE) +
-  geom_abline(lty="dashed")+
-  theme_bw()+
-  labs(x = "Size(t)",
-      y = "Size(t+1)",
-      fill = "Year",
-      color = "Year")+
-  theme(legend.text = element_text(size = 4),
-          legend.key.size = unit(0.4, "cm"),
-          legend.title = element_text(size = 8))
-
-fake_data %>%
-  mutate(s1_predi = Growthpredict2) %>%
-  group_by(Size0Mars, Pop) %>%
-  summarise(s1_predi = mean(s1_predi),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = s1_predi)) +
-  # geom_count(data=growthdata,aes(x=Size0Mars,y=Size1Mars,colour = as.factor(Pop)),alpha = 0.5,show.legend = FALSE) +
-  geom_abline(lty="dashed")+
-  geom_line(aes(color = as.factor(Pop)),size=0.7) +
-  theme_bw()+
-  labs(x = "Size(t)",
-      y = "Size(t+1)",
-      fill = "Pop",
-      color = "Pop")+
-   scale_color_viridis_d(option = "plasma")+
-    theme(
-    axis.title.x = element_text(size = 16),  # Taille du titre axe X
-    axis.title.y = element_text(size = 16),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 14),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 14)    # Taille des graduations axe Y
-  )
-
-```
-
-```{r,echo=FALSE,warning=FALSE,out.width="50%"}
-fake_data %>% 
-  mutate(sdgrow = predict(Growthglm2$resid_fit, newdata = fake_data)) %>% 
-  group_by(Size0Mars, Age) %>%
-  summarise(sd_predi = mean(sdgrow),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = sd_predi)) +
-  geom_line(aes(color = as.factor(Age))) +
-  theme_bw()+
-  labs(x = "Size(t)",
-      y = "Growth residual variance",
-      fill = "Age",
-      color = "Age")+
-    scale_color_brewer(palette = "Spectral", direction = -1) +
-    theme(
-    axis.title.x = element_text(size = 15),  # Taille du titre axe X
-    axis.title.y = element_text(size = 15),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 13),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 13)    # Taille des graduations axe Y
-  )
-
-fake_data %>% 
-  mutate(sdgrow = predict(Growthglm2$resid_fit, newdata = fake_data)) %>% 
-  group_by(Size0Mars, year) %>%
-  summarise(sd_predi = mean(sdgrow),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = sd_predi)) +
-  geom_line(aes(color = as.factor(year)),show.legend=FALSE) +
-  theme_bw()+
-  labs(x = "Size(t)",
-      y = "Growth residual variance",
-      fill = "year",
-      color = "year")+
-    theme(
-    axis.title.x = element_text(size = 15),  # Taille du titre axe X
-    axis.title.y = element_text(size = 15),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 13),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 13)    # Taille des graduations axe Y
-  )
-
-fake_data %>% 
-  mutate(sdgrow = predict(Growthglm2$resid_fit, newdata = fake_data)) %>% 
-  group_by(Size0Mars, Pop) %>%
-  summarise(sd_predi = mean(sdgrow),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = sd_predi)) +
-  geom_line(aes(color = as.factor(Pop))) +
-  theme_bw()+
-  labs(x = "Size(t)",
-      y = "Growth residual variance",
-      fill = "Pop",
-      color = "Pop")+
-   scale_color_viridis_d(option = "plasma")+
-    theme(
-    axis.title.x = element_text(size = 15),  # Taille du titre axe X
-    axis.title.y = element_text(size = 15),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 13),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 13)    # Taille des graduations axe Y
-  )
-```
-
-
-gamma
-```{r,echo=FALSE,warning=FALSE,out.width="50%"}
-
-fake_data %>%
-  mutate(s1_predi = Growthpredict1gamma) %>%
-  group_by(Size0Mars, Age) %>%
-  summarise(s1_predi = mean(s1_predi),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = s1_predi)) +
-  geom_count(data=growthdata,aes(x=Size0Mars,y=Size1Mars,colour = as.factor(Age)),alpha = 0.5,show.legend = FALSE) +
-  geom_abline(lty="dashed")+
-  geom_line(aes(color = as.factor(Age)),size=0.7) +
-  theme_bw()+
-  labs(x = "Size(t)",
-      y = "Size(t+1)",
-      fill = "Age",
-      color = "Age")+
-    scale_color_brewer(palette = "Spectral", direction = -1) +
-    theme(
-    axis.title.x = element_text(size = 16),  # Taille du titre axe X
-    axis.title.y = element_text(size = 16),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 14),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 14)    # Taille des graduations axe Y
-  )
-
-
-
-fake_data %>%
-  mutate(s1_predi = Growthpredict1gamma) %>%
-  filter(Age==c(1,4,8)) %>% 
-  group_by(Size0Mars, year, Age) %>%
-  mutate(s1_predi = mean(s1_predi),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = s1_predi)) +
-  facet_wrap(vars(Age), labeller = as_labeller(c('1'="age 1",'4'="age 4",'8'="age 8")),scales="free_x")+
-  geom_line(aes(color = as.factor(year)),show.legend = FALSE) +
-  geom_abline(lty="dashed")+
-  theme_bw()+
-  labs(x = "Size(t)",
-      y = "Size(t+1)",
-      fill = "Year",
-      color = "Year")+
-  theme(legend.text = element_text(size = 4),
-          legend.key.size = unit(0.4, "cm"),
-          legend.title = element_text(size = 8))
-
-fake_data %>%
-  mutate(s1_predi = Growthpredict1gamma) %>%
-  group_by(Size0Mars, Pop) %>%
-  summarise(s1_predi = mean(s1_predi),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = s1_predi)) +
-  # geom_count(data=growthdata,aes(x=Size0Mars,y=Size1Mars,colour = as.factor(Pop)),alpha = 0.5,show.legend = FALSE) +
-  geom_abline(lty="dashed")+
-  geom_line(aes(color = as.factor(Pop)),size=0.7) +
-  theme_bw()+
-  labs(x = "Size(t)",
-      y = "Size(t+1)",
-      fill = "Pop",
-      color = "Pop")+
-   scale_color_viridis_d(option = "plasma")+
-    theme(
-    axis.title.x = element_text(size = 16),  # Taille du titre axe X
-    axis.title.y = element_text(size = 16),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 14),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 14)    # Taille des graduations axe Y
-  )
-
-```
-
-## Fecondité
-
-```{r,echo=FALSE,warning=FALSE,out.width="50%"}
-Cptlpredict1 <- predict(modcp, newdata = fake_data)[,1]
-Cptlpredict1 <- predict(Cptlglm1, newdata = fake_data)[,1]
-
-#Fécondité
-fake_data %>%
-  mutate(cptl_predi = exp(Cptlpredict1)) %>%
-  group_by(Size0Mars,year) %>% 
-  summarise(cptl_predi = mean(cptl_predi)) %>% 
-  ggplot(aes(x = Size0Mars, y = cptl_predi)) +
-  geom_point(data = cptl_data, aes(y = Capitule), alpha = 0.6) +
-  geom_line(aes(color=as.factor(year)),show.legend=FALSE) +
-  theme_bw()+
-  labs(x = "Size",
-    y = "Number of capitula")+
-  ylim(0,100)+
-    theme(
-    axis.title.x = element_text(size = 16),  # Taille du titre axe X
-    axis.title.y = element_text(size = 16),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 14),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 14)    # Taille des graduations axe Y
-  )
-
-fake_data %>%
-  mutate(cptl_predi = exp(Cptlpredict1)) %>%
-  group_by(Age,year) %>% 
-  summarise(cptl_predi = mean(cptl_predi)) %>% 
-  ggplot(aes(x = Age, y = cptl_predi)) +
-  geom_point(data = cptl_data, aes(y = Capitule), alpha = 0.6) +
-  geom_line(aes(color=as.factor(year)),show.legend=FALSE) +
-  theme_bw()+
-  labs(x = "Age",
-    y = "Number of capitula")+
-  ylim(0,100)+
-  xlim(1,8)+
-    theme(
-    axis.title.x = element_text(size = 16),  # Taille du titre axe X
-    axis.title.y = element_text(size = 16),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 14),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 14)    # Taille des graduations axe Y
-  )
-```
-
-```{r}
-Cptlpredict2 <- predict(Cptlglm2, newdata = fake_data)[,1]
-
-#Fécondité
-fake_data %>%
-  mutate(cptl_predi = exp(Cptlpredict2)) %>%
-  group_by(Size0Mars,Pop) %>% 
-  summarise(cptl_predi = mean(cptl_predi)) %>% 
-  ggplot(aes(x = Size0Mars, y = cptl_predi)) +
-  geom_point(data = cptl_data, aes(y = Capitule,color=as.factor(Pop)), alpha = 0.6) +
-  geom_line(aes(color=as.factor(Pop))) +
-  theme_bw()+
-  labs(x = "Size",
-    y = "Number of capitula")+
-  ylim(0,100)+
-     scale_color_viridis_d(option = "plasma")+
-    theme(
-    axis.title.x = element_text(size = 16),  # Taille du titre axe X
-    axis.title.y = element_text(size = 16),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 14),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 14)    # Taille des graduations axe Y
-  )
-
-```
-
-
-## Distribution de taille des plantules
+Flowering Probability
+Selected model flowmodAIC[[1]]
 
 ```{r,echo=FALSE,out.width="50%"}
-fake_data %>%
-  mutate(plt_predi = Pltpredict1) %>%
-  ggplot(aes(x = year, y = plt_predi)) +
-  # geom_ribbon(aes(ymin = plt_predi-res, ymax = plt_predi+res, fill = as.factor(Pop)), alpha=0.08)+
-  geom_line(aes(color = as.factor(Pop))) +
-  theme_bw()+
-  labs(x = "Year",
-    y = "Seedling size",
-    fill = "Population",
-    color = "Population")+
-   scale_color_viridis_d(option = "plasma")+
-      theme(
-    axis.title.x = element_text(size = 15),  # Taille du titre axe X
-    axis.title.y = element_text(size = 15),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 13),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 13)    # Taille des graduations axe Y
-  )
+
+result <- function(combi) {
+  effect_formula <- paste(unlist(combi), collapse = "+")
+  formula <- as.formula(paste("Flowering", "~", effect_formula))
+  fit <- fitme(formula, centauree_data, family=binomial, method = "PQL/L")
+}
+
+Flowglm <- result(flowmodAIC[[1]])
+summary(Flowglm)
+Flowpredict <- predict(Flowglm, newdata = centauree_data)[,1]
+
+centauree_data %>%
+  mutate(predicted_value = Flowpredict) %>%
+  group_by(Size0Mars) %>%
+  mutate(floweringProba = sum(Flowering, na.rm = TRUE) / n(), predict=mean(predicted_value)) %>%   ggplot(aes(x = Size0Mars, y = Flowering)) +
+  geom_count(alpha = 0.6) +  
+  geom_point(aes(y = floweringProba), color = "red", size = 0.5) +
+  geom_line(aes(y = floweringProba), color = "red") +
+  geom_line(aes(y=predict), col="green") +
+  labs(title = "Relationship between flowering probability and size",
+    x = "Size (cm)",
+    y = "Flowering",
+    subtitle = "Grey points : observed reproduction (0/1)
+Red points : mean value for each size
+Green line : predicted value") +
+  ylim(0, 1) +
+  theme_minimal()
+
+centauree_data %>%
+  mutate(predicted_value = Flowpredict) %>%
+  group_by(Age) %>%
+  mutate(floweringProba = sum(Flowering, na.rm = TRUE) / n(), predict=mean(predicted_value)) %>%   ggplot(aes(x = Age, y = Flowering)) +
+  geom_count(alpha = 0.6) +  
+  geom_point(aes(y = floweringProba), color = "red", size = 0.5) +
+  geom_line(aes(y = floweringProba), color = "red") +
+  geom_line(aes(y = predict), color = "green") +
+    labs(title = "Relationship between flowering probability and age",
+    x = "Age",
+    y = "Flowering",
+    subtitle = "Grey points : observed reproduction (0/1)
+Red points : mean value for each age
+Green line : predicted value") +
+  ylim(0, 1) +
+  theme_minimal()
 
 
+
+
+```
+
+
+
+Fecundity
+
+```{r,echo=FALSE,out.width="50%",warning=FALSE}
+
+cptl_data <- centauree_data[centauree_data$Flowering==1,]
+cptl_data <- cptl_data[!is.na(cptl_data$Capitule),]
+
+summary(Cptlglm1)
+Cptlpredict <- predict(Cptlglm1, newdata = cptl_data)[,1]
+Cptlpredict <- exp(Cptlpredict) #back transformation
+
+
+# Nombre de capitules / taille 
+cptl_data %>%
+  mutate(predicted_value = Cptlpredict) %>%
+  ggplot(aes(x = Size0Mars, y = Capitule)) +
+  geom_point(col="red") +
+  geom_point(aes(y=predicted_value), col="green") +
+  labs(title = "Relation entre la taille et le nombre de capitules",
+       y = "Nbre de capitules",
+       x = "Size (cm)",
+     subtitle = "Red points : observed values
+   Green points : predicted values") +
+  theme_minimal()
+
+
+#Nbr de capitules / Year
+cptl_data %>%
+  mutate(predicted_value = Cptlpredict) %>%
+  group_by(year) %>%
+  mutate(Observed = mean(Capitule, na.rm = TRUE), predict=mean(predicted_value)) %>%
+  ggplot(aes(x = year, y = Observed)) +
+  geom_point(aes(y = Observed), color = "red", size = 0.5) +
+  geom_line(aes(y = Observed), color = "red") +
+  geom_line(aes(y = predict), color = "green") +
+  labs(title = "Relationship between fecundity and year",
+    x = "Year",
+    y = "Nb of seed heads",
+    subtitle = 
+      "Red points : mean value for each year
+      Green line : predicted value") +
+  theme_minimal()
+```
+
+
+
+
+Seedling Size 
+```{r,echo=FALSE,out.width="50%"}
+plantule_data <- centauree_data[centauree_data$Age==1,]
+
+effect_formula <- paste(unlist(pltmodAIC[[1]]), collapse = "+")
+formula <- as.formula(paste("Size0Mars", "~", effect_formula))
+Pltglm <- fitme(formula, data = plantule_data, family=Gamma(log), method = "PQL/L")
+summary(Pltglm)
+Pltpredict <- predict(Pltglm, newdata = plantule_data, type=("response"))[,1]
+
+
+# Seedling size distribution
+#Mean value per year
 plantule_data %>%
-  mutate(plt_predi = predict(Pltglm1)[,1]) %>%  
-  ggplot(aes(x = plt_predi)) +
-  geom_histogram(fill="red",col="red", alpha=0.3)+
-  geom_histogram(aes(x = plantule_data$Size0Mars), col="black",fill="grey2", alpha=0.3)+
-  theme_bw()+
-  labs(x = "Seedling size",
-       subtitle = "red : estimated, grey : observed")
+  mutate(predicted_value=Pltpredict) %>%
+  group_by(year) %>%
+  mutate(ObsSize = mean(Size0Mars), PredSize=mean(predicted_value)) %>%
+  ggplot(aes(x = year, y = ObsSize)) +
+  geom_count(alpha = 0.6) +  
+  geom_point(aes(y = ObsSize), color = "red", size = 0.5) +
+  geom_line(aes(y = ObsSize), color = "red") +
+  geom_line(aes(y =PredSize), color = "green") +
+  labs(title = "Mean seedling per year",
+    x = "Year",
+    y = "Size (cm)",
+subtitle = "Red points : mean value for each year
+Green line : predicted value") +
+  theme_minimal()
+  
+# Seedling size distribution
+mydata1 <- data.frame(tapply(plantule_data$Size0Mars, plantule_data$Pop,mean),
+                     tapply(plantule_data$Size0Mars, plantule_data$Pop,sd))
+mydata1$Pop <- row.names(mydata1)
+mydata1$Val <- "Obs"
+mydata2 <- data.frame(tapply(Pltpredict, plantule_data$Pop,mean),
+                     tapply(Pltpredict, plantule_data$Pop,sd))
+mydata2$Pop <- row.names(mydata2)
+mydata2$Val <- "Pred"
 
+names(mydata1) <- names(mydata2) <- c("Mean","Sd","Pop","Type")
+mydata <- rbind(mydata1, mydata2)
 
-h <- hist(Pltpredict1, breaks = 20, plot = FALSE)
-h$counts <- h$counts / sum(h$counts)
-plot(h, main="",
-     xlab = "Seedling Size",
-     ylab = "Normalized frequency",
-      yaxt = "n");axis(2,at = seq(0, 1, by = 0.25))
-# shape <- 1/Pltglm1$phi
-# scale <- 0.2873*Pltglm1$phi
-# hist(rgamma(1000,shape=shape,scale=scale),breaks=20)
-```
+ggplot(mydata, aes(x = Pop, y = Mean, fill=Type)) +
+      geom_bar(stat="identity", position="dodge") +
+      geom_errorbar(aes(ymin = Mean-Sd, ymax = Mean+Sd), width=.2,
+                    position=position_dodge(.9))
+  labs(title = "Mean seedling size (and SD) per population",
+    x = "Population",
+    y = "Size (cm)",
+subtitle = "Obs. : mean of observed values
+Pred. : predicted value") +
+  theme_minimal()
 
-```{r}
-# histogramme des données observées
-observed_df <- plantule_data %>%
-  mutate(bin = cut(Size0Mars, breaks = seq(floor(min(Size0Mars)), ceiling(max(Size0Mars)), by = 0.5), include.lowest = TRUE)) %>%
-  count(bin) %>%
-  mutate(freq = n / sum(n),
-         bin_center = as.numeric(sub("\\((.+),.+\\]", "\\1", bin)) + 0.25)
-
-# données prédites sous forme de densité discrète
-predicted_hist <- hist(Pltpredict1, breaks = seq(floor(min(Pltpredict1)), ceiling(max(Pltpredict1)), by = 0.5), plot = FALSE)
-predicted_df <- data.frame(
-  bin_center = predicted_hist$mids,
-  freq = predicted_hist$counts / sum(predicted_hist$counts)
-)
- predicted_df <- predicted_df %>% filter(bin_center!=0.25)
- 
-
-ggplot() +
-  geom_col(data = observed_df, aes(x = bin_center, y = freq),color="black", alpha = 0.5, width = 0.5) +
-  geom_line(data = predicted_df, aes(x = bin_center, y = freq), color = "red", size = 1.2) +
-  labs(x = "Seedling size", y = "Normalized frequency") +
-  scale_y_continuous(breaks = seq(0, 1, by = 0.25), limits = c(0, NA)) +
-  theme_bw()+
-  theme_bw()+
-  xlim(0.5,5)+
-        theme(
-    axis.title.x = element_text(size = 15),  # Taille du titre axe X
-    axis.title.y = element_text(size = 15),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 13),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 13)    # Taille des graduations axe Y
-  )
 
 ```
 
-## Establishment rate
+
+
+Establishement rate
 
 
 ```{r}
-fake_dataEstb %>%
-  mutate(plt = Estbpredict) %>%
-  group_by(year,Pop) %>% 
-  mutate(estb = mean(plt/Capitule)) %>% 
-  ggplot(aes(x = year, y = estb)) +
-  geom_line(aes(color = as.factor(Pop))) +
-  theme_bw()+
-  labs(x = "Year",
-    y = "Establishment rate",
-    fill = "Population",
-    color = "Population")+
-   scale_color_viridis_d(option = "plasma")+
-      theme(
-    axis.title.x = element_text(size = 15),  # Taille du titre axe X
-    axis.title.y = element_text(size = 15),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 13),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 13)    # Taille des graduations axe Y
-  )
-```
+#First replace NA values for number of capitula using predicted values from selected model
+cptldata_predi <- IPM_data[IPM_data$Flowering==1,] %>%
+  mutate(Capitule = ifelse(is.na(Capitule),exp(predict(Cptlglm1)),Capitule))
 
-
-```{r}
-cptl_data_predi <- cptl_data %>%
-  mutate(Capitule = ifelse(is.na(Capitule), exp(2.31070+0.06846*Size0Mars), Capitule))
-
+#Number of seedlings
 plt <- IPM_data %>% 
   filter(Age==1) %>% 
   group_by(Quadrat,year,Pop) %>% 
   summarize(NombrePlantules = sum(Age))
 
-cptl <- cptl_data_predi %>% 
+cptl <- cptldata_predi %>% 
   group_by(Quadrat,year,Pop) %>% 
   summarize(Capitule = sum(Capitule))
+cptl$year <- cptl$year+1
 
-#Calcul avec la formule d'origine utilisant les données brutes
-Estb <- inner_join(plt,cptl, by=join_by(Quadrat,year,Pop)) 
+Estb <- inner_join(plt,cptl, by=join_by(Quadrat,year,Pop))
+Estb$ratio <- Estb$NombrePlantules/Estb$Capitule
 ```
+
+Number of seedlings observed is dependent on the number of seed heads :
+```{r}
+Estbglm <- fitme(NombrePlantules ~ 1 + offset(log(Capitule)) + (1|Pop:year),data = Estb,
+                  family = Poisson(log))
+
+Estb$pred <- predict(Estbglm, Estb)[,1]
+Estb$predratio <- Estb$pred/Estb$Capitule
+```
+
+
+Observed and predicted Values per year
+```{r}
+Estb %>%
+  group_by(year) %>%
+  summarise(meanratio = mean(ratio), meanpredratio = mean(predratio)) %>%
+  ggplot(aes(x = year, y = meanratio)) +
+  geom_line(col="red") +
+  geom_line(aes(y=meanpredratio), col="green") +
+  labs(y="Establishment rate",
+       x="Year",
+       subtitle = "Red line : mean of observed values
+       Green line : predicted value") +
+    theme_minimal()
+
+```
+Final name of each model and save to a final object to be imported in the IPM script
 
 ```{r}
-plot(predict(Estbglm2)[,1],
-     residuals.HLfit(Estbglm2,type="deviance"))
-plot(residVar(Estbglm2, which="var"),
-     residuals.HLfit(Estbglm2,type="response"))
+
+Seedling_surv
+Plant_surv
+Growth <- Growthglm1
+Flowering <- Flowglm
+Fecundity <- Cptlglm1
+Seedling_size <- Pltglm
+Estbrate <- Estbglm
+
+save(Seedling_surv,Plant_surv,Growth,Flowering,Fecundity,Seedling_size,Estbrate,
+     file="../IPM/VitalRates.RData")
 ```
-
-
-## Autre
-
-Plot de la croissance à côté de la floraison
-```{r}
-fake_data %>%
-  mutate(s1_predi = Growthpredict1,
-         flow_predi = Flowpredict1) %>%
-  group_by(Size0Mars, Age) %>%
-  mutate(s1_predi = mean(s1_predi),
-         flow_predi = mean(flow_predi),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = s1_predi)) +
-  geom_abline(lty="dashed")+
-  geom_line(aes(y = 17.5*flow_predi, color = as.factor(Age))) +
-    scale_y_continuous("Size(t+1)", 
-    sec.axis = sec_axis(~ . /17.5, name = "Flowering Probability"))+
-  geom_line(aes(color = as.factor(Age))) +
-  theme_bw()+
-  labs(title = "Croissance prédite (log-log)",
-      subtitle = "Chaque courbe représente un age, une moyenne a été faite sur les années et les populations",
-      x = "Size(t)",
-      y = "Size(t+1)",
-      fill = "Ages",
-      color = "Ages")
-```
-
-Calcul des taux de survie moyen pour plantules et rosettes, pondérés par la distribution de taille des individus
-```{r,echo=FALSE,warning=FALSE}
-plantule_data <- IPM_data[IPM_data$Age==1,] %>% 
-  filter(!is.na(Age)) %>% 
-  filter(Size0Mars!=0)
-
-n_plt <- length(plantule_data$Individu)
-
-sizeSeedl <- unique(plantule_data$Size0Mars[order(plantule_data$Size0Mars)])
-
-Width <-NULL 
-Den <- NULL 
-
-for (i in 1:length(sizeSeedl)){
-  # Number of observations for each size
-  Width[i] <- length(unique(plantule_data$Individu[plantule_data$Size0Mars==sizeSeedl[i]]))
-  # Frequency of each size
-  Den[i] <- Width[i]/n_plt
-}
-
-f1 <- fake_data1 %>%
-  mutate(surv = Survpredict11) %>% 
-    filter(Size0Mars<=9.5) %>% 
-  group_by(Size0Mars) %>% 
-  summarize(meansurv = mean(surv))
-
-ms <- c()
-for(i in 1:19){
-  ms[i]<- f1$meansurv[f1$Size0Mars==i/2]*Den[i]
-}
-sum(ms)
-```
-
-
-```{r,echo=FALSE,warning=FALSE,out.width="50%"}
-s2 <- survdata2 %>% 
-  group_by(Size0Mars) %>% 
-  summarize(Den = length(Individu)/length(survdata2$Individu))
-
-f2 <- fake_data2 %>%
-  mutate(surv = Survpredict12) %>% 
-    filter(Size0Mars<=19.5) %>% 
-  group_by(Size0Mars) %>% 
-  summarize(meansurv = mean(surv))
-
-ms2 <- c()
-for(i in 1:39){
-  ms2[i]<- f2$meansurv[f2$Size0Mars==i/2]*s2$Den[i]
-}
-sum(ms2)
-```
-
-Histoire de vie de la croissance d'une plante
-```{r}
-nbofind <- 100
-Grow <- function (x, a) {
-    fake_data <- expand.grid(
-  year = annees,
-  Pop = populations,
-  Size0Mars = unique(x),
-  Age = a)
-  mu <- predict(Growthglm1, fake_data, allow.new.levels = T, residVar=TRUE) #Prédit les log(taille) à t+1 possibles 
-  mu2 <- aggregate(mu, list(fake_data$Size0Mars), mean) #Calcule la moyenne des log(taille)t+1
-  usd <- sqrt(exp(1.0462608+0.5367287*log(unique(x))))
-  return(rnorm(nbofind, mean = mu2$V1, sd = usd)) #Proba qu'un individu soit de taille y à t+1 sachant la moyenne et la variance
-}
-
-fake_growth <- expand.grid(
-     Ind = 1:nbofind,
-   year = annees[1:8],
-   Size = NA)
-
-start <- 2
-
-fake_growth$Size[fake_growth$year==annees[1]] <- start
-
-for (t in 2:8){
-  size1 <- Grow(fake_growth$Size[fake_growth$year==annees[t-1]],t-1)
-  fake_growth$Size[fake_growth$year==annees[t]] <- size1 
-  fake_growth$Size <- ifelse(fake_growth$Size<0,0L,fake_growth$Size)
-}
-
-for(i in 1:nbofind){
-  if (0 %in% fake_growth$Size[fake_growth$Ind==i]){
-    pos <- which(fake_growth$Size[fake_growth$Ind==i]==0)
-    fake_growth$Size[fake_growth$Ind==i][pos:8] <- 0
-  }
-}
-
-ggplot(data = fake_growth, aes(year, y=Size))+
-  geom_line(aes(color=as.factor(Ind)),show.legend = FALSE)+
-  theme_bw()
-```
-
-
-
-# Modèles par BIC
-
-
-```{r,include=FALSE}
-load("IPM/ModelsBIC")
-
-summary(Survglm11)
-summary(Survglm12)
-summary(Flowglm1)
-summary(Pltglm1)
-summary(Cptlglm1)
-summary(Growthglm1)
-```
-
-  
-```{r,include=FALSE}
-Survpredict11 <- predict(Survglm11, newdata = fake_data1)[,1]
-Survpredict12 <- predict(Survglm12, newdata = fake_data2)[,1]
-Flowpredict1 <- predict(Flowglm1, newdata = fake_data)[,1]
-Pltpredict1 <- predict(Pltglm1, newdata = fake_data)[,1]
-Cptlpredict1 <- predict(Cptlglm1, newdata = fake_data)[,1]
-Growthpredict1 <- predict(Growthglm1, newdata = fake_data)[,1]
-```
-
-## Survie plantules
-
-```{r,echo=FALSE,warning=FALSE,out.width="50%"}
-fake_data1 %>%
-  mutate(surv = Survpredict11)%>%
-  group_by(Size0Mars,year) %>%
-  mutate(surv_predi = mean(surv, na.rm = TRUE),
-         .group="drop") %>%
-  ggplot(aes(x = Size0Mars, y = surv_predi)) +
-  geom_count(data=survdata1,aes(x=Size0Mars,y=Survie),alpha = 0.5) +
-  geom_line(aes(color=as.factor(year)),show.legend = FALSE) +
-  theme_bw()+
-  ylim(0, 1) +
-  xlim(0,15)+
-  labs(x = "Size",
-      y = "Seedling survival probability")+ 
-  theme(
-    axis.title.x = element_text(size = 15),  # Taille du titre axe X
-    axis.title.y = element_text(size = 15),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 13),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 13)    # Taille des graduations axe Y
-  )
-
-fake_data1 %>%
-  mutate(surv = Survpredict11)%>%
-  group_by(Size0Mars,Pop) %>%
-  mutate(surv_predi = mean(surv, na.rm = TRUE),
-         .group="drop") %>%
-  ggplot(aes(x = Size0Mars, y = surv_predi)) +
-  geom_count(data=survdata1,aes(x=Size0Mars,y=Survie),alpha = 0.5) +
-  geom_line(aes(color=as.factor(Pop))) +
-  theme_bw()+
-  ylim(0, 1) +
-  xlim(0,15)+
-  labs(x = "Size",
-      y = "Seedling survival probability")+ 
-  theme(
-    axis.title.x = element_text(size = 15),  # Taille du titre axe X
-    axis.title.y = element_text(size = 15),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 13),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 13)    # Taille des graduations axe Y
-  )+
-     scale_color_viridis_d(option = "plasma")
-
-```
-
-## Survie rosettes
-
-```{r,echo=FALSE,warning=FALSE,out.width="50%"}
-#Survie rosettes
-
-fake_data2 %>%
-  mutate(surv = Survpredict12) %>%
-  filter(Age==c(2,8)) %>%
-  group_by(Size0Mars,Pop,Age) %>%
-  mutate(surv_predi = mean(surv),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = surv_predi)) +
-  facet_wrap(~Age, labeller = as_labeller(c('2'="age 2",'8'="age 8")))+
-  geom_count(data=survdata2[survdata2$Age %in% c(2,8),],aes(x=Size0Mars,y=Survie),alpha = 0.3) +
-  geom_line(aes(color = as.factor(Pop)),show.legend = FALSE) +
-  theme_bw()+
-  ylim(0, 1) +
-  labs(x = "Size",
-      y = "Rosette survival probability",
-      color = "Population")+
-    theme(
-    axis.title.x = element_text(size = 15),  # Taille du titre axe X
-    axis.title.y = element_text(size = 15),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 14),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 14)    # Taille des graduations axe Y
-  )+
-   scale_color_viridis_d(option = "plasma")
-
-
-library(RColorBrewer)
-couleurs_inversées <- rev(brewer.pal(8, "Spectral"))
-couleurs <- couleurs_inversées[2:8]
-
-fake_data2 %>%
-  mutate(surv = Survpredict12) %>%
-  group_by(Size0Mars,Age) %>%
-  mutate(surv_predi = mean(surv),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = surv_predi)) +
-  geom_line(aes(color = as.factor(Age)),size=0.75) +
-    geom_count(data=survdata2[survdata2$Age>1,],aes(x=Size0Mars,y=Survie,color=as.factor(Age)),alpha = 0.3) +
-  theme_bw()+
-  ylim(0, 1) +
-  labs(x = "Size",
-      y = "Rosette survival probability",
-      color = "Age")+
-    theme(
-    axis.title.x = element_text(size = 15),  # Taille du titre axe X
-    axis.title.y = element_text(size = 15),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 14),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 14),    # Taille des graduations axe Y
-          legend.key.size = unit(0.4, "cm"),     # Réduit la taille des clés (symboles)
-  legend.spacing.y = unit(0.2, "cm"),    # Réduit l'espacement vertical
-  legend.margin = margin(2, 2, 2, 2),    # Réduit les marges internes de la légende
-  legend.box.margin = margin(2, 2, 2, 2)
-  )+
-  scale_color_manual(values = couleurs)
-
-fake_data2 %>%
-  mutate(surv = Survpredict12) %>%
-  filter(Age==c(2,8)) %>%
-  group_by(Size0Mars,year,Age) %>%
-  mutate(surv_predi = mean(surv),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = surv_predi)) +
-  facet_wrap(~Age, labeller = as_labeller(c('2'="age 2",'8'="age 8")))+
-  geom_count(data=survdata2[survdata2$Age %in% c(2,8),],aes(x=Size0Mars,y=Survie),alpha = 0.3) +
-  geom_line(aes(color = as.factor(year)),show.legend = FALSE) +
-  theme_bw()+
-  ylim(0, 1) +
-  labs(x = "Size",
-      y = "Survival probability",
-      color = "Year")+
-    theme(
-    axis.title.x = element_text(size = 15),  # Taille du titre axe X
-    axis.title.y = element_text(size = 15),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 14),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 14)    # Taille des graduations axe Y
-  )
-
-fake_data2 %>%
-  mutate(surv = Survpredict12) %>%
-  filter(Age==5) %>% 
-  group_by(Size0Mars,Age) %>%
-  mutate(surv_predi = mean(surv),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = surv_predi)) +
-  geom_line(color = "black",size=1) +
-    geom_count(data=survdata2[survdata2$Age==3,],aes(x=Size0Mars,y=Survie),color="black",alpha=0.3) +
-  theme_bw()+
-  ylim(0, 1) +
-  labs(x = "Size",
-      y = "Rosette survival probability",
-      color = "Age")+
-    theme(
-    axis.title.x = element_text(size = 15),  # Taille du titre axe X
-    axis.title.y = element_text(size = 15),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 14),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 14),    # Taille des graduations axe Y
-          legend.key.size = unit(0.4, "cm"),     # Réduit la taille des clés (symboles)
-  legend.spacing.y = unit(0.2, "cm"),    # Réduit l'espacement vertical
-  legend.margin = margin(2, 2, 2, 2),    # Réduit les marges internes de la légende
-  legend.box.margin = margin(2, 2, 2, 2)
-  )+
-  scale_color_manual(values = couleurs)
-
-```
-
-
-```{r,echo=FALSE,warning=FALSE,out.width="50%"}
-#Survie rosettes
-# resSurv2 <- residVar(Survglm12,newdata = fake_data2)
-sdata <- survdata2
-fake_data2 %>%
-  mutate(surv = Survpredict12)%>%
-  filter(Size0Mars==5) %>% 
-  group_by(Age,Pop) %>% 
-  summarise(surv_predi = mean(surv),
-            .groups = "drop") %>% 
-  ggplot(aes(x = Age, y = surv_predi)) +
-  geom_count(data=survdata2,aes(x=Age,y=Survie),alpha = 0.5) +
-  geom_line(aes(color = as.factor(Pop)))+
-  theme_bw() +
-  ylim(0, 1) +
-  labs( x = "Age",
-      y = "Rosette survival probability",
-      fill = "Population",
-      color = "Population")+
-   scale_color_viridis_d(option = "plasma")+
-      theme(
-    axis.title.x = element_text(size = 15),  # Taille du titre axe X
-    axis.title.y = element_text(size = 15),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 13),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 13) ,   # Taille des graduations axe Y
-      legend.key.size = unit(0.4, "cm"),     # Réduit la taille des clés (symboles)
-  legend.spacing.y = unit(0.2, "cm"),    # Réduit l'espacement vertical
-  legend.margin = margin(2, 2, 2, 2),    # Réduit les marges internes de la légende
-  legend.box.margin = margin(2, 2, 2, 2)
-  )
-
-fake_data2 %>%
-  mutate(surv = Survpredict12)%>%
-    filter(Size0Mars==5) %>% 
-  group_by(Age,year) %>% 
-  summarise(surv_predi = mean(surv),
-            .groups = "drop") %>% 
-  ggplot(aes(x = Age, y = surv_predi)) +
-  geom_count(data=survdata2,aes(x=Age,y=Survie),alpha = 0.5) +
-  geom_line(aes(color = as.factor(year)),show.legend = FALSE)+
-  theme_bw() +
-  ylim(0, 1) +
-  labs( x = "Age",
-      y = "Rosette survival probability",
-      fill = "Year",
-      color = "Year")+
-      theme(
-    axis.title.x = element_text(size = 15),  # Taille du titre axe X
-    axis.title.y = element_text(size = 15),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 13),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 13),    # Taille des graduations axe Y
-      legend.key.size = unit(0.4, "cm"),     # Réduit la taille des clés (symboles)
-  legend.spacing.y = unit(0.2, "cm"),    # Réduit l'espacement vertical
-  legend.margin = margin(2, 2, 2, 2),    # Réduit les marges internes de la légende
-  legend.box.margin = margin(2, 2, 2, 2)
-  )
-
-```
-
-## Floraison
-
-```{r,echo=FALSE,warning=FALSE,out.width="50%"}
-# #Floraison
-# resFlow <- get_predVar(Flowglm1,newdata = fake_data)
-#   geom_ribbon(aes(ymin = flow_predi-resVar, ymax = flow_predi+resVar, alpha=0.08,fill=as.factor(Age)))+
-
-fake_data %>%
-  mutate(flow_predi = Flowpredict1) %>%
-  group_by(Size0Mars, Age) %>%
-  summarise(flow_predi = mean(flow_predi),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = flow_predi)) +
-  geom_count(data=centauree_data,aes(x=Size0Mars,y=Flowering,col=as.factor(Age)),alpha = 0.6,show.legend = FALSE) +
-  geom_line(aes(color = as.factor(Age)),size=0.75) +
-  theme_bw()+
-  ylim(0, 1) +
-  labs(x = "Size",
-      y = "Flowering probability",
-      color = "Age")+
-  scale_color_brewer(palette = "Spectral", direction = -1) +
-    theme(
-    axis.title.x = element_text(size = 16),  # Taille du titre axe X
-    axis.title.y = element_text(size = 16),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 14),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 14)    # Taille des graduations axe Y
-  )
-  
-fake_data %>%
-  mutate(flow_predi = Flowpredict1)%>%
-  filter(Age==c(2,4,8)) %>% 
-  group_by(Size0Mars, Pop, Age) %>%
-  summarise(flow_predi = mean(flow_predi),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = flow_predi)) +
-  facet_wrap(vars(Age), labeller = as_labeller(c('2'="age2",'4'="age4",'8'="age8")))+
-  geom_line(aes(color = as.factor(Pop))) +
-  theme_bw()+
-  ylim(0, 1) +
-  labs(x = "Size",
-      y = "Flowering probability",
-      fill = "Populations",
-      color = "Populations")
-
-fake_data %>%
-  mutate(flow_predi = Flowpredict1) %>%
-  filter(Age==5) %>% 
-  group_by(Size0Mars, Age) %>%
-  summarise(flow_predi = mean(flow_predi),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = flow_predi)) +
-  geom_count(data=centauree_data,aes(x=Size0Mars,y=Flowering),alpha = 0.6,show.legend = FALSE) +
-  geom_line(size=1) +
-  theme_bw()+
-  ylim(0, 1) +
-  labs(x = "Size",
-      y = "Flowering probability",
-      color = "Age")+
-  scale_color_brewer(palette = "Spectral", direction = -1) +
-    theme(
-    axis.title.x = element_text(size = 16),  # Taille du titre axe X
-    axis.title.y = element_text(size = 16),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 14),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 14)    # Taille des graduations axe Y
-  )
-```
-
-```{r,echo=FALSE,warning=FALSE,out.width="50%"}
-#Floraison
-resFlow <- residVar(Flowglm1,newdata = fake_data)
-
-fake_data %>%
-  mutate(flow_predi = Flowpredict1) %>%
-  filter(Size0Mars==10) %>% 
-  group_by(Pop, Age) %>%
-  summarise(flow_predi = mean(flow_predi),
-            .groups = "drop") %>%
-  ggplot(aes(x = Age, y = flow_predi)) +
-  geom_line(aes(color = as.factor(Pop))) +
-  theme_bw() +
-  ylim(0, 1) +
-  labs(x = "Age",
-      y = "Flowering probability",
-      fill = "Populations",
-      color = "Populations")+
-     scale_color_viridis_d(option = "plasma")+
-      theme(
-    axis.title.x = element_text(size = 15),  # Taille du titre axe X
-    axis.title.y = element_text(size = 15),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 13),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 13)    # Taille des graduations axe Y
-  )
-  
-```
-
-## Croissance
-
-```{r,echo=FALSE,warning=FALSE,out.width="50%"}
-#Croissance
-fake_data %>%
-  mutate(s1_predi = Growthpredict1) %>%
-  group_by(Size0Mars, Age) %>%
-  summarise(s1_predi = mean(s1_predi),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = s1_predi)) +
-  geom_count(data=growthdata,aes(x=Size0Mars,y=Size1Mars,colour = as.factor(Age)),alpha = 0.5,show.legend = FALSE) +
-  geom_abline(lty="dashed")+
-  geom_line(aes(color = as.factor(Age)),size=0.7) +
-  theme_bw()+
-  labs(x = "Size(t)",
-      y = "Size(t+1)",
-      fill = "Age",
-      color = "Age")+
-    scale_color_brewer(palette = "Spectral", direction = -1) +
-    theme(
-    axis.title.x = element_text(size = 16),  # Taille du titre axe X
-    axis.title.y = element_text(size = 16),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 14),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 14)    # Taille des graduations axe Y
-  )
-
-
-
-fake_data %>%
-  mutate(s1_predi = Growthpredict1) %>%
-  filter(Age==c(1,4,8)) %>% 
-  group_by(Size0Mars, year, Age) %>%
-  mutate(s1_predi = mean(s1_predi),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = s1_predi)) +
-  facet_wrap(vars(Age), labeller = as_labeller(c('1'="age 1",'4'="age 4",'8'="age 8")),scales="free_x")+
-  geom_line(aes(color = as.factor(year)),show.legend = FALSE) +
-  geom_abline(lty="dashed")+
-  theme_bw()+
-  labs(x = "Size(t)",
-      y = "Size(t+1)",
-      fill = "Year",
-      color = "Year")+
-  theme(legend.text = element_text(size = 4),
-          legend.key.size = unit(0.4, "cm"),
-          legend.title = element_text(size = 8))
-
-fake_data %>% mutate(sdgrow = exp(1.1013346+0.5553254*log(Size0Mars)-0.1231723*log(Age))) %>% 
-  group_by(Size0Mars, Age) %>%
-  summarise(sd_predi = mean(sdgrow),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = sd_predi)) +
-  geom_line(aes(color = as.factor(Age))) +
-  theme_bw()+
-  labs(x = "Size(t)",
-      y = "Growth residual variance",
-      fill = "Age",
-      color = "Age")+
-    scale_color_brewer(palette = "Spectral", direction = -1) +
-    theme(
-    axis.title.x = element_text(size = 15),  # Taille du titre axe X
-    axis.title.y = element_text(size = 15),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 13),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 13)    # Taille des graduations axe Y
-  )
-
-
-fake_data %>%
-  mutate(s1_predi = Growthpredict1) %>%
-  group_by(Size0Mars, Pop) %>%
-  summarise(s1_predi = mean(s1_predi),
-            .groups = "drop") %>%
-  ggplot(aes(x = Size0Mars, y = s1_predi)) +
-  # geom_count(data=growthdata,aes(x=Size0Mars,y=Size1Mars,colour = as.factor(Pop)),alpha = 0.5,show.legend = FALSE) +
-  geom_abline(lty="dashed")+
-  geom_line(aes(color = as.factor(Pop)),size=0.7) +
-  theme_bw()+
-  labs(x = "Size(t)",
-      y = "Size(t+1)",
-      fill = "Pop",
-      color = "Pop")+
-   scale_color_viridis_d(option = "plasma")+
-    theme(
-    axis.title.x = element_text(size = 16),  # Taille du titre axe X
-    axis.title.y = element_text(size = 16),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 14),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 14)    # Taille des graduations axe Y
-  )
-
-
-```
-
-## Fecondité
-
-```{r,echo=FALSE,warning=FALSE,out.width="50%"}
-#Fécondité
-fake_data %>%
-  mutate(cptl_predi = exp(Cptlpredict1)) %>%
-  group_by(Size0Mars,year) %>% 
-  summarise(cptl_predi = mean(cptl_predi)) %>% 
-  ggplot(aes(x = Size0Mars, y = cptl_predi)) +
-  geom_point(data = cptl_data, aes(y = Capitule), alpha = 0.6) +
-  geom_line(aes(color=as.factor(year)),show.legend=FALSE) +
-  theme_bw()+
-  labs(x = "Size",
-    y = "Number of capitula")+
-  ylim(0,100)+
-    theme(
-    axis.title.x = element_text(size = 16),  # Taille du titre axe X
-    axis.title.y = element_text(size = 16),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 14),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 14)    # Taille des graduations axe Y
-  )
-
-fake_data %>%
-  mutate(cptl_predi = exp(Cptlpredict1)) %>%
-  group_by(Age,year) %>% 
-  summarise(cptl_predi = mean(cptl_predi)) %>% 
-  ggplot(aes(x = Age, y = cptl_predi)) +
-  geom_point(data = cptl_data, aes(y = Capitule), alpha = 0.6) +
-  geom_line(aes(color=as.factor(year)),show.legend=FALSE) +
-  theme_bw()+
-  labs(x = "Age",
-    y = "Number of capitula")+
-  ylim(0,100)+
-  xlim(1,8)+
-    theme(
-    axis.title.x = element_text(size = 16),  # Taille du titre axe X
-    axis.title.y = element_text(size = 16),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 14),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 14)    # Taille des graduations axe Y
-  )
-```
-
-## Distribution de taille des plantules
-
-```{r,echo=FALSE,out.width="50%"}
-fake_data %>%
-  mutate(plt_predi = Pltpredict1) %>%
-  ggplot(aes(x = year, y = plt_predi)) +
-  # geom_ribbon(aes(ymin = plt_predi-res, ymax = plt_predi+res, fill = as.factor(Pop)), alpha=0.08)+
-  geom_line(aes(color = as.factor(Pop))) +
-  theme_bw()+
-  labs(x = "Year",
-    y = "Seedling size",
-    fill = "Population",
-    color = "Population")+
-   scale_color_viridis_d(option = "plasma")+
-      theme(
-    axis.title.x = element_text(size = 15),  # Taille du titre axe X
-    axis.title.y = element_text(size = 15),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 13),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 13)    # Taille des graduations axe Y
-  )
-
-h <- hist(Pltpredict1, breaks = 20, plot = FALSE)
-h$counts <- h$counts / sum(h$counts)
-plot(h, main="",
-     xlab = "Seedling Size",
-     ylab = "Normalized frequency",
-      yaxt = "n");axis(2,at = seq(0, 1, by = 0.25))
-# shape <- 1/Pltglm1$phi
-# scale <- 0.2873*Pltglm1$phi
-# hist(rgamma(1000,shape=shape,scale=scale),breaks=20)
-```
-
-```{r}
-# histogramme des données observées
-observed_df <- plantule_data %>%
-  mutate(bin = cut(Size0Mars, breaks = seq(floor(min(Size0Mars)), ceiling(max(Size0Mars)), by = 0.5), include.lowest = TRUE)) %>%
-  count(bin) %>%
-  mutate(freq = n / sum(n),
-         bin_center = as.numeric(sub("\\((.+),.+\\]", "\\1", bin)) + 0.25)
-
-# données prédites sous forme de densité discrète
-predicted_hist <- hist(Pltpredict1, breaks = seq(floor(min(Pltpredict1)), ceiling(max(Pltpredict1)), by = 0.5), plot = FALSE)
-predicted_df <- data.frame(
-  bin_center = predicted_hist$mids,
-  freq = predicted_hist$counts / sum(predicted_hist$counts)
-)
- predicted_df <- predicted_df %>% filter(bin_center!=0.25)
- 
-
-ggplot() +
-  geom_col(data = observed_df, aes(x = bin_center, y = freq),color="black", alpha = 0.5, width = 0.5) +
-  geom_line(data = predicted_df, aes(x = bin_center, y = freq), color = "red", size = 1.2) +
-  labs(x = "Seedling size", y = "Normalized frequency") +
-  scale_y_continuous(breaks = seq(0, 1, by = 0.25), limits = c(0, NA)) +
-  theme_bw()+
-  theme_bw()+
-  xlim(0.5,5)+
-        theme(
-    axis.title.x = element_text(size = 15),  # Taille du titre axe X
-    axis.title.y = element_text(size = 15),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 13),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 13)    # Taille des graduations axe Y
-  )
-
-```
-
-
 

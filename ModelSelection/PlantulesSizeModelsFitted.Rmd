@@ -1,0 +1,191 @@
+---
+title: "Seedling size"
+author: "Loïc Pages & Eric Imbert"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  word_document: default
+  html_document:
+    df_print: paged
+---
+
+Plot raw data, predicted values from models and make a decision for seedling size distribution
+5 models using AIC criterion => see ModelSelection.Rmd
+
+```{r}
+rm(list=ls())
+library(knitr)
+library(spaMM)
+library(tidyverse)
+library(splines)
+library(foreach)
+library(doParallel)
+library(patchwork)
+
+IPM_data <- read.csv("../data/donneesIPM.csv")
+centauree_data <- IPM_data[!is.na(IPM_data$Size0Mars) & !is.na(IPM_data$Age),]
+plantule_data <- centauree_data[centauree_data$Age==1,]
+spaMM.options(separation_max=70)
+load("SelectedModels.RData")
+
+#fake data
+annees <- 1995:2022
+populations <- c("E2","E1","Au","Po","Pe","Cr")
+taille_range <- seq(0.5, 25, by = 0.5) 
+age_range <- 1:8
+
+fake_data <- expand.grid(
+  year = annees,
+  Pop = populations,
+  Size0Mars = taille_range,
+  Age = age_range
+)
+
+fake_data <- fake_data %>% 
+  mutate(Nrw = row_number())
+
+```
+
+Taille des plantules / année
+
+
+```{r}
+
+plantule_data %>% 
+  ggplot(aes(x = year, y = Size0Mars)) +
+  geom_count(alpha=0.6) +
+  labs(x = "Année",
+       y = "Taille des plantules") +
+  theme_minimal()
+
+# Taille des plantules / population
+
+plantule_data %>% 
+  ggplot(aes(x = Pop, y = Size0Mars)) +
+  geom_count(alpha=0.6) +
+  labs(x = "Population",
+       y = "Taille des plantules") +
+  theme_minimal()
+
+plantule_data %>% 
+  ggplot(aes(x=Size0Mars)) +
+  geom_histogram(aes(y = after_stat(density)),
+    fill = "grey", color = "black", alpha = 0.6)+
+  theme_minimal()
+
+plantule_data %>%
+  group_by(Pop) %>% 
+  ggplot(aes(x=Size0Mars)) +
+  geom_histogram(aes(y = after_stat(density), fill=as.factor(Pop)),
+     alpha = 0.6)+
+  theme_minimal()
+```
+
+
+
+
+```{r}
+
+result <- function(combi) {
+  effect_formula <- paste(unlist(combi), collapse = "+")
+  formula <- as.formula(paste("Size0Mars", "~", effect_formula))
+  fit <- fitme(formula, data = plantule_data, family=Gamma(log), method = "PQL/L")
+}
+
+
+Pltglm1 <- result(pltmodAIC[[1]])
+Pltglm2 <- result(pltmodAIC[[2]])
+Pltglm3 <- result(pltmodAIC[[3]])
+Pltglm4 <- result(pltmodAIC[[4]])
+Pltglm5 <- result(pltmodAIC[[5]])
+
+summary(Pltglm1)
+summary(Pltglm2)
+summary(Pltglm3)
+summary(Pltglm4)
+summary(Pltglm5)
+```
+
+```{r,results='hide'}
+Pltpredict1 <- predict(Pltglm1, newdata = fake_data)[,1]
+Pltpredict2 <- predict(Pltglm2, newdata = fake_data)[,1]
+Pltpredict3 <- predict(Pltglm3, newdata = fake_data)[,1]
+Pltpredict4 <- predict(Pltglm4, newdata = fake_data)[,1]
+Pltpredict5 <- predict(Pltglm5, newdata = fake_data)[,1]
+```
+
+
+```{r}
+plot_plantule <- function(data = fake_data, prediction, var, fact) {
+  data %>%
+    mutate(plt_predi = prediction) %>%
+    ggplot(aes(x = .data[[var]], y = plt_predi)) +
+    geom_line(aes(color = as.factor(.data[[fact]])),show.legend = FALSE) +
+    labs(y="Taille des plantules")+
+    scale_color_viridis_d(option = "plasma")+
+    theme_minimal()
+}
+
+plot_plantule1 <- function(data = fake_data, prediction, var, fact) {
+  data %>%
+    mutate(plt_predi = prediction) %>%
+    ggplot(aes(x = .data[[var]], y = plt_predi)) +
+    geom_line(aes(color = as.factor(.data[[fact]]))) +
+    labs(y="Taille des plantules")+
+    scale_color_viridis_d(option = "plasma")+
+    theme_minimal()
+}
+
+plot_plantule2 <- function(data = fake_data, prediction) {
+  data %>%
+    mutate(plt_predi = prediction) %>%
+    ggplot(aes(x = plt_predi)) +
+    stat_bin(binwidth = 0.25,fill="grey",color="black")+
+    labs(x="Taille des plantules")+
+    theme_minimal()
+}
+```
+
+
+Taille des plantules en fonction de l'année
+
+
+```{r}
+var <- "year"
+fact <- "Pop"
+```
+
+```{r,warning=FALSE,echo=FALSE}
+wrap_plots(
+  plot_plantule(prediction = Pltpredict1, var=var, fact=fact),
+  plot_plantule(prediction = Pltpredict2, var=var, fact=fact),
+  plot_plantule(prediction = Pltpredict3, var=var, fact=fact),
+  plot_plantule(prediction = Pltpredict4, var=var, fact=fact),
+  plot_plantule1(prediction = Pltpredict5, var=var, fact=fact)
+)
+```
+
+
+Densité de taille de plantule
+
+```{r,warning=FALSE,echo=FALSE}
+wrap_plots(
+  plot_plantule2(prediction = Pltpredict1),
+  plot_plantule2(prediction = Pltpredict2),
+  plot_plantule2(prediction = Pltpredict3),
+  plot_plantule2(prediction = Pltpredict4),
+  plot_plantule2(prediction = Pltpredict5)
+)
+```
+Goodness of fit
+```{r}
+gof(Pltglm1)
+gof(Pltglm2)
+gof(Pltglm3)
+gof(Pltglm4)
+gof(Pltglm5)
+```
+
+Selected model : PltAIC[[1]]
+
+

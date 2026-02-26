@@ -21,11 +21,13 @@ Plant survival probability (Age>2)
 Flowering probability
 Growth => Only one model
 Fecundity (number of capitula) => Only one model
-Seedling size distribution => Only one model
+Seedling size distribution
 Establishment rate => Only one model
 
+For each vital rate, details on selected models can be found in dedicated scripts.
+e.g. FloweringModelFitted.Rmd...
 
-Next step => import the SelectedModels.RData in ModelSelectionReport.Rmd
+Otherwise : next step => import the SelectedModels.RData in ModelSelectionReport.Rmd
 
 ```{r}
 rm(list=ls())
@@ -767,7 +769,7 @@ cptl$year <- cptl$year+1
 Estb <- inner_join(plt,cptl, by=join_by(Quadrat,year,Pop))
 ```
 
-Number of seedlings observed is dependant on the number of seed heads :
+Number of seedlings observed is dependent on the number of seed heads :
 ```{r}
 Estbglm <- fitme(NombrePlantules ~ 1 + offset(log(Capitule)) + (1|Pop:year),data = Estb,
                   family = Poisson(log))

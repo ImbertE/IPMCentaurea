@@ -1,0 +1,198 @@
+---
+title: "Growth Models Fitted"
+author: "Loïc Pages & Eric Imbert"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  word_document: default
+  html_document:
+    df_print: paged
+---
+  
+Print raw data, predicted values from models (see ModelSelection.Rmd) and make a decision for growth - Only one model selected
+
+```{r,message=FALSE}
+rm(list=ls())
+library(knitr)
+library(spaMM)
+library(tidyverse)
+library(splines)
+library(foreach)
+library(doParallel)
+library(patchwork)
+
+IPM_data <- read.csv("../data/donneesIPM.csv")
+centauree_data <- IPM_data[!is.na(IPM_data$Size0Mars) & !is.na(IPM_data$Age),]
+centauree_data$Age[centauree_data$Age > 8] <- 8
+
+spaMM.options(separation_max=70)
+load("SelectedModels.RData")
+
+
+#Fake data for predictions
+annees <- 1995:2022
+populations <- c("E2","E1","Au","Po","Pe","Cr")
+taille_range <- seq(0.5, 25, by = 0.5) 
+age_range <- 1:8
+
+fake_data <- expand.grid(
+  year = annees,
+  Pop = populations,
+  Size0Mars = taille_range,
+  Age = age_range
+)
+
+fake_data <- fake_data %>% 
+  mutate(Nrw = row_number())
+```
+
+```{r}
+growthdata <- centauree_data[!is.na(centauree_data$Size1Mars), ]
+growthdata <- growthdata[growthdata$Size1Mars != 0, ]
+
+growthdata %>%
+  ggplot(aes(y = Size1Mars, x = Size0Mars)) +
+  geom_count(alpha=0.5) +
+  labs(title = "Relation entre le taux de croissance et la taille",
+       y = "Taille à t+1",
+       x = "Taille à t") +
+  theme_minimal()
+
+growthdata %>%
+  ggplot(aes(y = log(Size1Mars), x = log(Size0Mars))) +
+  geom_count(alpha=0.5) +
+  labs(title = "Relation entre le taux de croissance et la taille en log-log",
+       y = "Taille à t+1",
+       x = "Taille à t") +
+  theme_minimal()
+
+
+qplot(growthdata$Size0Mars)
+qplot(growthdata$Size1Mars)
+qplot(growthdata$Size0Mars^0.4343554)
+qplot(growthdata$Size1Mars^0.4343554)
+```
+
+
+
+```{r}
+summary(Growthglm1)
+Growthpredict1 <- predict(Growthglm1, newdata = fake_data)[,1]
+Growthpredict1 <- exp(log(Growthpredict1)/0.4343354) #back transformation 
+```
+
+
+```{r}
+plot_growth1 <- function(data = fake_data, prediction, var, c1, c2, valc1=1, fact) {
+  data %>%
+    mutate(size1predi = prediction) %>%
+    group_by(!!sym(var),!!sym(fact)) %>% 
+    filter(!!sym(c1) == valc1) %>%
+    summarise(size1predi = mean(size1predi),
+            .groups = "drop") %>%
+    ggplot(aes(x = .data[[var]], y = size1predi)) +
+    geom_line(aes(color = as.factor(.data[[fact]])),show.legend = FALSE) +
+    geom_abline()+
+    xlim(0,25) +
+    ylim(0,25) +
+    theme_minimal()
+}
+
+plot_growth2 <- function(data = fake_data, prediction, var, c1, c2, valc1=1, fact) {
+  data %>%
+    mutate(size1predi = prediction) %>%
+    group_by(!!sym(var),!!sym(fact)) %>%
+    filter(!!sym(c1) == valc1) %>%
+    summarise(size1predi = mean(size1predi),
+            .groups = "drop") %>%
+    ggplot(aes(x = .data[[var]], y = size1predi)) +
+    geom_line(aes(color = as.factor(.data[[fact]])),show.legend = FALSE) +
+    geom_abline()+
+    xlim(0,25) +
+    ylim(0,25) + 
+    theme_minimal()+
+    scale_color_viridis_d(option = "plasma")
+}
+
+plot_growth3 <- function(data = fake_data, prediction, var, c1, c2, valc1=1, fact) {
+  data %>% mutate(sdgrow = prediction) %>% 
+  group_by(Size0Mars, Age) %>%
+  summarise(sd_predi = mean(sdgrow),
+            .groups = "drop") %>%
+  ggplot(aes(x = Size0Mars, y = sd_predi)) +
+  geom_line(aes(color = as.factor(Age))) +
+    xlim(0,25) +
+  theme_bw()+
+  labs(x = "Size(t)",
+      y = "Growth residual variance",
+      fill = "Age",
+      color = "Age")+
+    scale_color_brewer(palette = "Spectral", direction = -1)
+}
+```
+
+Taille à t+1 en fonction de taille à t
+
+En fixant la population : voir l'effet année
+
+```{r}
+var <- "Size0Mars"
+c1 <- "Age"
+c2 <- "Pop"
+fact <- "year"
+```
+Age 1, 4, 8
+```{r,warning=FALSE,echo=FALSE}
+valc1 <- 1
+wrap_plots(
+  plot_growth1(prediction = Growthpredict1, var=var, c1=c1, valc1=valc1, c2=c2, fact=fact))
+
+valc1 <- 4
+wrap_plots(
+  plot_growth1(prediction = Growthpredict1, var=var, c1=c1, valc1=valc1, c2=c2, fact=fact))
+
+
+valc1 <- 8
+wrap_plots(
+  plot_growth1(prediction = Growthpredict1, var=var, c1=c1, valc1=valc1, c2=c2, fact=fact))
+```
+Age 1, 4, 8
+
+
+En fixant l'année : voir l'effet population
+
+```{r}
+var <- "Size0Mars";
+c1 <- "Age";
+c2 <- "year";
+fact <- "Pop"
+```
+
+```{r,warning=FALSE,echo=FALSE}
+valc1 <- 1
+wrap_plots(
+  plot_growth2(prediction = Growthpredict1, var=var, c1=c1, valc1=valc1, c2=c2, fact=fact))
+  
+valc1 <- 4
+wrap_plots(
+  plot_growth2(prediction = Growthpredict1, var=var, c1=c1, valc1=valc1, c2=c2, fact=fact))
+
+valc1 <- 8
+wrap_plots(
+  plot_growth2(prediction = Growthpredict1, var=var, c1=c1, valc1=valc1, c2=c2, fact=fact))
+
+```
+Age 1, 4, 8
+
+Residual variance
+
+```{r}
+respred1 <- get_residVar(Growthglm1,newdata=fake_data)
+```
+
+
+```{r,echo=FALSE}
+wrap_plots(
+  plot_growth3(prediction = respred1, var=var, c1=c1, valc1=valc1, c2=c2, fact=fact))
+```
+
