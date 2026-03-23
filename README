@@ -16,9 +16,17 @@ François Rousset
 
 Data are stored in the data directory
 
-Step 1 
-Model selections => create a R object with several selected models for each vital rate
+Step 1 : ModelSelection.Rmd
+	Model selections and creation of a R object named SelectedModels.RData with several selected models for each vital rate
 
-Step 2
-For each vital rate, there is a specific script to run models and make comparisons
 
+Step 2 
+For each vital rate, there is a specific script to run selected models in Step 1 and make comparisons
+
+
+Step 3 : ModelSelectionReport.Rmd
+Once a specific model has been choosen for each vital rate, each selected model is renamed and
+a R object named VitalRates.RData is created and ready to be imported in the IPM script
+
+
+Step 4 : 
