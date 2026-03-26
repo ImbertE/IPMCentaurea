@@ -1,0 +1,16 @@
+
+
+Matrices obtained using Matrix Population Models
+See Fréville et al. 2000 Ecology
+and Hadjou Belaid et 2018 for details
+
+
+matrice_globale.Rdata : matrice pooling data over year and populations
+
+matricesperyear.Rdata : 27 matrices (one per year) pooling populations
+
+and Aumatrices.Rdata : 27 matrices (one per year) for Auzils populations... and so for each of population (6 datasets)
+
+
+
+
