@@ -32,3 +32,7 @@ a R object named VitalRates.RData is created and ready to be imported in the IPM
 Step 4 : IPM.Rmd for a global IPM, but more interesting is IPM_Pop_Year.Rmd to compute kernals for each combination Population*Year.
 Also included IPM per population (pooling data over years) and IPM per year (pooling data among populations).
 
+
+
+
+

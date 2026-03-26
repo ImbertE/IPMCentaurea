@@ -1,0 +1,257 @@
+---
+pdf_document: default
+author: "Loïc Pages & Eric Imbert"
+date: "`r Sys.Date()`"
+output:
+  html_document: null
+  df_print: paged
+  pdf_document: default
+word_document: default
+title: "Comparisons between observed/predicted distributions for size and age using global IPM"
+---
+
+```{r setup, include=FALSE}
+rm(list=ls())
+#library(spaMM)
+library(tidyverse)
+library(popbio)
+library(dplyr)
+#library(splines)
+
+
+observed_data <- read.csv("../data/donneesIPM.csv")
+AgeMax <- 8
+observed_data$Age[observed_data$Age > AgeMax] <- AgeMax
+observed_data <- observed_data[!is.na(observed_data$Size0Mars) & !is.na(observed_data$Age),]
+
+MatrixDim <- 50
+load("../IPM/VitalRates.RData")
+load("../IPM/Global_IPM.RData")
+
+
+annees <- 1995:2021
+populations <- c("Po","Au","Pe","E1","E2","Cr")
+
+flr0 <- function(x, a, Beta=0) {
+  fake_data <- expand.grid(
+  year = annees,
+  Pop = populations,
+  Size0Mars = unique(x),
+  Age = a)
+  predi <- plogis(predict(Flowering, newdata = fake_data, allow.new.levels = T, type = "link") + Beta) 
+  meanpredi <- aggregate(predi, list(fake_data$Size0Mars), mean)
+  return(meanpredi$V1)
+}
+
+n.size <- MatrixDim
+minsize <-  0.5
+maxsize <-  25
+maxsize1 <- 15
+h <-  (maxsize - minsize) / n.size
+h1 <-  (maxsize1 - minsize) / n.size
+b <- minsize + c(0:n.size) * h
+ymid.a = 0.5 * (b[1:n.size] + b[2:(n.size + 1)])
+yI.a <- matrix(nrow = n.size, ncol = 2)
+for (i in 1:n.size) {
+  yI.a[i, 1] <- b[i]
+  yI.a[i, 2] <- b[i + 1]
+}
+
+b1 = minsize + c(0:n.size) * h1
+ymid.1 = 0.5 * (b1[1:n.size] + b1[2:(n.size + 1)])
+yI.1 <- matrix(nrow = n.size, ncol = 2)
+for (i in 1:n.size) {
+  yI.1[i, 1] <- b1[i]
+  yI.1[i, 2] <- b1[i + 1]
+}
+
+
+```
+
+Stable distribution Size and Age
+
+```{r}
+A <- eigen.analysis(Global_IPM)
+
+
+AA <- data.frame(
+  Size1 = rep(ymid.1,8),
+  Size = rep(ymid.a,8),
+  density = rep(NA,50*8),
+  age = rep(NA,50*8)
+)
+  
+for (i in 1:8){
+  AA$density[(50*(i-1)+1):(50*i)] <- A$stable.stage[(50*(i-1)+1):(50*i)]
+  AA$age[(50*(i-1)+1):(50*i)]  <- rep(i,50)
+  }
+```
+
+Histogramme de tailles observées
+
+```{r}
+hist_data_list <- list()
+
+# Boucle sur les ages
+for (a in 1:8) {
+  data_age <- observed_data %>% filter(Age == a)
+  if (a == 1) {
+    bins <- b1
+    mids <- ymid.1
+  } else {
+    bins <- b
+    mids <- ymid.a
+  }
+  hist_counts <- hist(data_age$Size0Mars, breaks = bins, plot = FALSE)
+  df_hist <- data.frame(
+    Age = a,
+    x = mids,
+    count = hist_counts$counts
+  )
+  hist_data_list[[a]] <- df_hist
+}
+
+# Combine tout
+hist_data <- bind_rows(hist_data_list)
+
+# Normalisation
+N_total <- sum(hist_data$count)
+hist_data <- hist_data %>%
+  mutate(prob = count / N_total,
+         age=Age)
+```
+
+Distribution for observed/predicted size for each age
+
+```{r, warning=FALSE}
+AA %>% 
+  ggplot()+
+  geom_col(data=hist_data,aes(x = x, y = prob), fill = "steelblue", color = "black", width = h) +
+  geom_line(aes(x=Size,y=density),col="red")+
+  # geom_smooth(aes(x=Size,y=density))+
+  theme_bw()+
+  facet_wrap(~age,scale="free")+
+  labs(x="Size (cm)",
+      y="Density",
+      subtitle = "Histogram : observed distribution
+      Red line = predicted distribution")
+```
+
+Distribution for observed/predicted age
+
+```{r}
+age_dist <- hist_data %>%
+  group_by(age) %>% 
+  summarize(prob = sum(prob))
+
+AA %>% group_by(age) %>% 
+  summarize(density = sum(density)) %>% 
+  ggplot()+
+  geom_col(data=age_dist, aes(x = age, y = prob, fill = as.factor(age)), color = "black", width = 0.5, show.legend = FALSE) +
+  scale_fill_brewer(palette = "Spectral", direction = -1) +
+  geom_line(aes(y=density,x=age),col="red",linewidth=1)+
+  theme_bw()+
+  labs(x="Age",
+       y="Density",
+       subtitle = "Bar :observed distribution
+       Red line : predicted distribution ")
+
+```
+
+Age at flowering
+
+```{r}
+observed_data_raw <- read.csv("../data/donneesIPM.csv")
+
+af <- hist(
+  observed_data_raw$Age[observed_data_raw$Flowering == 1],
+  breaks = seq(0.5, 12.5, by = 1),
+  xaxt = "n",
+  xlab = "Age",
+  ylab = "Number of flowering plants",
+  main = "Raw data")
+axis(1, at = 1:12, labels = 1:12)
+
+af <- hist(
+  observed_data$Age[observed_data$Flowering == 1],
+  breaks = seq(0.5, 8.5, by = 1),
+  xaxt = "n",
+  xlab = "Age",
+  ylab = "Number of flowering plants",
+  main = "AgeMax = 8")
+axis(1, at = 1:8, labels = 1:8)
+```
+
+
+Distribution of size for flowering plants
+
+```{r, warning=FALSE}
+N <- matrix(ncol = 8, nrow = 50)
+for (i in 1:8){
+  N[,i] <- A$stable.stage[(50*(i-1)+1):(50*i)]
+}
+W <- function(age){
+  return(N[(50*(age-1)+1):(50*age)])
+}
+
+
+#Proportion de plantes en fleurs dans la population
+Flr_dens <- sum(flr0(ymid.1,1)*W(1))
+for (a in 2:8) { 
+  Flr_dens <- Flr_dens + sum(flr0(ymid.a, a) * W(a))
+}
+
+Flry <- rep(NA, 50) #Distribution de taille des plantes en fleur
+Z <- rep(NA, 50)
+for (i in 1:MatrixDim) {
+  Flry[i] <- sum(flr0(ymid.1[i],1)*W(1)[i])
+  for (a in 2:8) {
+    Flry[i] <- Flry[i] + flr0(ymid.a[i], a) * W(a)[i]
+  }
+}
+Z <- Flry/Flr_dens #normalisation
+
+flower_data <- observed_data[observed_data$Flowering==1 & !is.na(observed_data$Flowering),]
+flower_data <- flower_data %>%
+  group_by(Size0Mars) %>%
+  summarise(n_fleuri = n()) %>%
+  mutate(Wobs = n_fleuri / sum(n_fleuri),
+         Size=Size0Mars) %>% dplyr::select(!n_fleuri) %>% 
+  dplyr::select(!Size0Mars)
+
+tibble(Size = seq(0.5,25,0.5),
+                 West = Z) %>% 
+  left_join(flower_data,join_by(Size)) %>% 
+
+  ggplot(aes(x = Size)) +
+  geom_bar(aes(y = Wobs), stat = "identity", fill = "steelblue",color="black") +
+  geom_line(aes(y = West), color = "red", linewidth = 1) +
+  labs(x = "Size at flowering", y = "Density",
+       subtitle = "Histogram : observed distribution
+       Red line : predicted distribution") +
+  theme_bw()+
+      theme(
+    axis.title.x = element_text(size = 16),  # Taille du titre axe X
+    axis.title.y = element_text(size = 16),  # Taille du titre axe Y
+    axis.text.x = element_text(size = 14),   # Taille des graduations axe X
+    axis.text.y = element_text(size = 14)    # Taille des graduations axe Y
+  )
+```
+
+
+
+Mean size and mean age at flowering
+
+```{r}
+mu_size <- sum(ymid.1*W(1)*flr0(ymid.1,1))
+mu_a <- sum(W(1)*flr0(ymid.1,1))
+mu2 <- sum(W(1)*flr0(ymid.1,1))
+for(a in 2:8){
+  mu_size <- mu_size + sum(ymid.a*W(a)*flr0(ymid.a,a))
+  mu_a <- mu_a + sum(a*W(a)*flr0(ymid.a,a))
+  mu2 <- mu2 + sum(W(a)*flr0(ymid.a,a))
+}
+mu_size <- mu_size/mu2
+mu_a <- mu_a/mu2
+```
+

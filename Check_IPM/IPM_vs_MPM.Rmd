@@ -72,6 +72,28 @@ ggplot(data=GrowthRateIPM, aes(x=Year,y=Lambda))+
 Comparisons of vital rates
 Step 1 Vital rates as in the MPM
 
+
+N1 : density of seedlings
+N2 : density of rosetts (age >1 )
+N3 : density of flowering plants  
+  
+  
+Fecundity
+$$
+    fs_0=\frac{\sum\limits_{a=1}^8\sum\limits_i\sum\limits_j W_{a,j}\tilde{F}(j,a,i,1)}{\sum\limits_{a=1}^8\sum\limits_jW_{a,j}f(j,a)}
+$$
+
+Seedling survival
+$$   s_1(1-\alpha_1)=\frac{\sum\limits_i\sum\limits_j W_{1,j}\tilde{P}(j,1,i,2)(1-f(i,2))}{\sum\limits_jW_{1,j}(1-f(j,1))}$$
+
+Rosett survival
+$$ s_2(1-\alpha_2)=\frac{\sum\limits_i\sum\limits_j \sum\limits_{a=2}^7W_{a,j}\tilde{P}(j,a,i,a+1)(1-f(i,a+1))+ W_{8,j}\tilde{P}(j,8,i,8)(1-f(i,8))}{\sum\limits_{a=2}^8\sum\limits_jW_{a,j}(1-f(j,a))}$$
+
+Flowering stage
+$$s_2\alpha_2=\frac{\sum\limits_i\sum\limits_j \sum\limits_{a=2}^7W_{a,j}\tilde{P}(j,a,i,a+1)f(i,a+1)+ W_{8,j}\tilde{P}(j,8,i,8)f(i,8)}{\sum\limits_{a=2}^8\sum\limits_jW_{a,j}(1-f(j,a))}$$
+
+
+
 ```{r}
 VitalRatesIPM <- list()
 Pop <- c("E2", "E1", "Au", "Po", "Pe", "Cr")
@@ -79,7 +101,7 @@ annees <- 1995:2021
 minsize <-  0.5
 maxsize <-  25
 maxsize1 <- 15
-n.size <- MatrixDim
+n.size <- MatrixDim <- 50
 h <-  (maxsize - minsize) / n.size
 h1 <-  (maxsize1 - minsize) / n.size
 b = minsize + c(0:n.size) * h
@@ -145,10 +167,8 @@ for (k in 1:length(annees)) {
     }
     return(M[((50 * a) + i), ((a - 1) * 50 + 1):(a * 50)])
   }
-  
-  # Calcul des traits d'histoire de vie
-  #fécondité
-  N1t1 <- 0
+#fecundity
+N1t1 <- 0
   N3t0 <- sum(V(1) * flr0(ymid.1, 1, 0, Pop, year))
   for (a in 2:8) {
     N3t0 <- N3t0 + sum(V(a) * flr0(ymid.a, a, 0, Pop, year))
@@ -159,18 +179,18 @@ for (k in 1:length(annees)) {
     }
   }
   fs0 <- N1t1 / N3t0
-  fs0
-  
+
+#seedling survival  
   N2t1 <- 0
   N1t0 <- sum(V(1) * (1 - flr0(ymid.1, 1, 0, Pop, year)))
   for (i in 1:MatrixDim) {
     N2t1 <- N2t1 + sum(P(i, 1) * V(1) * (1 - flr0(ymid.a[i], 2, 0, Pop, year)))
   }
   s1_1a1 <- N2t1 / N1t0
-  s1_1a1
+
+#rosette survival  
   
-  #survie rosette
-  N2t1 <- 0
+    N2t1 <- 0
   N2t0 <- 0
   for (a in 2:8) {
     N2t0 <- N2t0 + sum(V(a) * (1 - flr0(ymid.a, a, 0, Pop, year)))
@@ -182,8 +202,8 @@ for (k in 1:length(annees)) {
     N2t1 <- N2t1 + sum(P(i, 8) * V(8) * (1 - flr0(ymid.a[i], 8, 0, Pop, year)))
   }
   s2_1a2 <- N2t1 / N2t0
-  s2_1a2
-  
+
+#flowering  
   N2t1 <- 0
   N2t0 <- 0
   for (a in 2:8) {
@@ -196,8 +216,6 @@ for (k in 1:length(annees)) {
     N2t1 <- N2t1 + sum(P(i, 8) * V(8) * flr0(ymid.a[i], 8, 0, Pop, year))
   }
   s2_a2 <- N2t1 / N2t0
-  s2_a2
-  
   #formation des nouvelles matrices
   VitalRatesIPM[[k]] <- matrix(c(0, s1_1a1, 0, 0, s2_1a2, s2_a2, fs0, 0, 0),
                          nrow = 3,
