@@ -3,10 +3,10 @@ title: "Integral Projection Model"
 author: "Loïc Pages & Eric Imbert"
 date: "`r Sys.Date()`"
 output:
+  pdf_document: default
+  word_document: default
   html_document:
     df_print: paged
-  word_document: default
-  pdf_document: default
 ---
 
 
@@ -34,7 +34,7 @@ load("VitalRates.RData")
 
 Creation of the functions for the kernels. 
 ```{r}
-annees <- 1995:2022
+annees <- 1995:2021
 populations <- c("Po","Au","Pe","E1","E2","Cr")
 
 

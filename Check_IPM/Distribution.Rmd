@@ -240,18 +240,66 @@ tibble(Size = seq(0.5,25,0.5),
 
 
 
-Mean size and mean age at flowering
+Mean size and mean age at flowering per population
 
 ```{r}
-mu_size <- sum(ymid.1*W(1)*flr0(ymid.1,1))
-mu_a <- sum(W(1)*flr0(ymid.1,1))
-mu2 <- sum(W(1)*flr0(ymid.1,1))
-for(a in 2:8){
-  mu_size <- mu_size + sum(ymid.a*W(a)*flr0(ymid.a,a))
-  mu_a <- mu_a + sum(a*W(a)*flr0(ymid.a,a))
-  mu2 <- mu2 + sum(W(a)*flr0(ymid.a,a))
+load("../IPM/IPM_Kernal_Pop.RData")
+
+mean_size_age <- data.frame (populations, pred_size=NA,pred_age=NA,
+                             obs_size=NA, se_size=NA,
+                             obs_age=NA,se_age=NA)
+
+flr0 <- function(x, a, Pop, Beta=0) {
+  fake_data <- expand.grid(
+  year = annees,
+  Pop = Pop,
+  Size0Mars = unique(x),
+  Age = a)
+  predi <- plogis(predict(Flowering, newdata = fake_data, allow.new.levels = T, type = "link") + Beta) 
+  meanpredi <- aggregate(predi, list(fake_data$Size0Mars), mean)
+  return(meanpredi$V1)
 }
-mu_size <- mu_size/mu2
-mu_a <- mu_a/mu2
+
+
+for (mypop in 1:6) {
+A <- eigen.analysis(IPMKernal_Pop[[mypop]])
+N <- matrix(ncol = 8, nrow = 50)
+for (i in 1:8){
+  N[,i] <- A$stable.stage[(50*(i-1)+1):(50*i)]
+}
+W <- function(age){
+  return(N[(50*(age-1)+1):(50*age)])
+}
+
+mu_size <- sum(ymid.1*W(1)*flr0(ymid.1,1, populations[mypop]))
+mu_a <- sum(W(1)*flr0(ymid.1,1, populations[mypop]))
+mu2 <- sum(W(1)*flr0(ymid.1,1, populations[mypop]))
+for(a in 2:8){
+  mu_size <- mu_size + sum(ymid.a*W(a)*flr0(ymid.a,a, populations[mypop]))
+  mu_a <- mu_a + sum(a*W(a)*flr0(ymid.a,a, populations[mypop]))
+  mu2 <- mu2 + sum(W(a)*flr0(ymid.a,a, populations[mypop]))
+}
+mean_size_age$pred_size[mypop] <- mu_size/mu2
+mean_size_age$pred_age [mypop] <- mu_a/mu2
+
+rer <- observed_data[observed_data$Pop==populations[mypop],]
+mean_size_age$obs_size[mypop] <- mean(rer$Size0Mars[rer$Flowering==1])
+mean_size_age$se_size[mypop] <- sd(rer$Size0Mars[rer$Flowering==1])
+
+mean_size_age$obs_age[mypop] <- mean(rer$Age[rer$Flowering==1])
+mean_size_age$se_age[mypop] <- sd(rer$Age[rer$Flowering==1])
+}
+
+ggplot(data=observed_data[observed_data$Flowering==1,],aes(x=Pop, y=Age))+
+    geom_boxplot() +
+  geom_point(data=mean_size_age, aes(x=populations, y=pred_age), col="red", shape=20, size=3) +
+     theme_bw()
+
+ggplot(data=observed_data[observed_data$Flowering==1,],aes(x=Pop, y=Size0Mars))+
+    geom_boxplot() +
+  geom_point(data=mean_size_age, aes(x=populations, y=pred_size), col="red", shape=20, size=3) +
+     theme_bw()
+       
+
 ```
 

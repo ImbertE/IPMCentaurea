@@ -28,7 +28,7 @@ centauree_data$Age[centauree_data$Age > 8] <- 8
 spaMM.options(separation_max=70)
 load("SelectedModels.RData")
 
-annees <- 1995:2022
+annees <- 1995:2021
 populations <- c("E2","E1","Au","Po","Pe","Cr")
 
 taille_range <- seq(0.5, 25, by = 0.5) 
