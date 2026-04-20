@@ -9,6 +9,8 @@ output:
   df_print: paged
 ---
 
+First using the global data
+
 ```{r}
 rm(list=ls())
 library(spaMM)
@@ -76,10 +78,10 @@ observed number of flowering plants the first year.
 
 ```{r,warning=FALSE}
 N <- vector("double",length(annees)+1)
-Nia <- array(data = 0, dim = c(length(annees), 8, MatrixDim))
+Nia <- array(data = 0, dim = c(length(annees)+1, 8, MatrixDim))
 Nf_est_IPM <- vector("double",length(annees)+1)
 
-#distribution initiale en utilisant le kernel moyen
+#Initial distribution using mean kernal
   A <- eigen.analysis(mean(IPMKernal_Year))
   W <- function(age) {return(A$stable.stage[(50 * (age - 1) + 1):(50 * age)])}
   Nf_dens <- sum(W(1) * flr0(ymid.1, 1, year=1995)) 
@@ -87,9 +89,9 @@ Nf_est_IPM <- vector("double",length(annees)+1)
     Nf_dens <- Nf_dens + sum(W(a) * flr0(ymid.a, a, year=1995))
   }
   
-# Nombre d'individus total la première année, utilisant les données observées
+# Number of individuals the 1st year using the number of flowering plants
   N[1] <- Nf[1] / Nf_dens
-  # Nombre d'individus dans chaque classe de taille et d'age
+  # Number of plants in each size class and age at time=1
   for (a in 1:8) {
     for (i in 1:MatrixDim) {
       Nia[1, a, ] <- N[1] * W(a)
@@ -98,59 +100,52 @@ Nf_est_IPM <- vector("double",length(annees)+1)
   
   Nf_est_IPM[1] <- Nf[1]
 
-  # Itération sur les années suivantes
+  # Iteration over years
   for (yr in 2:length(annees)) {
     year <- annees[yr-1]
     A <- eigen.analysis(IPMKernal_Year[[yr-1]])
     Fec <- function(a) {
-      #a age de plante mère
+      #a = age of the mother plant
       return(IPMKernal_Year[[yr-1]][1:50, ((a - 1) * 50 + 1):(a * 50)])
     }
     P <- function(a) {
-      #a age de plante à t
+      #a = age of the plant at time t
       if (a == 8) {
         return(IPMKernal_Year[[yr-1]][((50*(a-1))+1):(50*a), (50*(a-1)+1):(50*a)])
         }
       return(IPMKernal_Year[[yr-1]][((50*a)+1):(50*(a+1)), (50*(a-1)+1):(50*a)])}
    
-    # Calcul du nombre d'individus dans chaque classe de taille et d'age en utilisant le kernel
-    for (a in 1:8) { # Nouvelles plantules produites
+    # Number of plants in each size class and age at time=yr
+    for (a in 1:8) { # seedlings
       Nia[yr, 1, ] <- Nia[yr, 1, ] + Fec(a) %*% Nia[yr-1, a, ]
     }
-    for (a in 2:8) { # Croissance-survie des plantes
+    for (a in 2:8) { # Growth and survival
       Nia[yr, a, ] <- P(a) %*% Nia[yr-1, a - 1, ]
     }
     Nia[yr, 8, ] <- Nia[yr, 8, ] + P(8) %*% Nia[yr-1, 8, ]
     
-    #Calcul du nombre de plantes en fleurs
+    #Nb of flowering plants
     Nf_est_IPM[yr] <- sum(Nia[yr, 1, ] * flr0(ymid.1, 1, year=year))
     for (a in 2:8) {
       Nf_est_IPM[yr] <- Nf_est_IPM[yr] + sum(Nia[yr, a, ] * flr0(ymid.a, a, year=year))
     }
   }
   
-#derniere annnee  
+#Last year  
     year <- 2021
-    yr <- 27
-    A <- eigen.analysis(IPMKernal_Year[[yr]])
+    yr <- 28
+    A <- eigen.analysis(IPMKernal_Year[[yr-1]])
     Fec <- function(a) {
-      #a age de plante mère
-      return(IPMKernal_Year[[yr]][1:50, ((a - 1) * 50 + 1):(a * 50)])
+       return(IPMKernal_Year[[yr-1]][1:50, ((a - 1) * 50 + 1):(a * 50)])
     }
     P <- function(a) {
-      #a age de plante à t
       if (a == 8) {
-        return(IPMKernal_Year[[yr]][((50*(a-1))+1):(50*a), (50*(a-1)+1):(50*a)])
+        return(IPMKernal_Year[[yr-1]][((50*(a-1))+1):(50*a), (50*(a-1)+1):(50*a)])
         }
-      return(IPMKernal_Year[[yr]][((50*a)+1):(50*(a+1)), (50*(a-1)+1):(50*a)])}
+      return(IPMKernal_Year[[yr-1]][((50*a)+1):(50*(a+1)), (50*(a-1)+1):(50*a)])}
    
-    # Calcul du nombre d'individus dans chaque classe de taille et d'age en utilisant le kernel
-    for (a in 1:8) { # Nouvelles plantules produites
-      Nia[yr, 1, ] <- Nia[yr, 1, ] + Fec(a) %*% Nia[yr-1, a, ]
-    }
-    for (a in 2:8) { # Croissance-survie des plantes
-      Nia[yr, a, ] <- P(a) %*% Nia[yr-1, a - 1, ]
-    }
+   for (a in 1:8) {Nia[yr, 1, ] <- Nia[yr, 1, ] + Fec(a) %*% Nia[yr-1, a, ]}
+    for (a in 2:8) {Nia[yr, a, ] <- P(a) %*% Nia[yr-1, a - 1, ]}
     Nia[yr, 8, ] <- Nia[yr, 8, ] + P(8) %*% Nia[yr-1, 8, ]
     
     #Calcul du nombre de plantes en fleurs
@@ -188,8 +183,6 @@ Nf_est_MPM[1] <- Nf[1]
 for (i in 2:28){
   M <- matrices[[i-1]]
   ev <- eigen(M)
-  W <- abs(Re(ev$vectors[,1]))
-  W <- W/sum(W)
   N <- M%*%N
   Nf_est_MPM[i] <- N[3]
   }
@@ -238,6 +231,322 @@ points(observed_ratio, ratio_MPM, col="blue")
 abline(a=0,b=1)
 text(3,1,"Blue = MPM")
 text(3,2,"Green = IPM")
+
+
+```
+Stat
+
+```{r}
+summary(lm(ratio_IPM ~ observed_ratio))$r.squared
+summary(lm(ratio_MPM ~ observed_ratio))$r.squared
+
+biaisIPM <- mean(ratio_IPM - observed_ratio, na.rm = TRUE)
+print(biaisIPM)
+100 * biaisIPM / mean(observed_ratio, na.rm = TRUE)
+
+biaisMPM <- mean(ratio_MPM - observed_ratio, na.rm = TRUE)
+print(biaisMPM)
+100 * biaisMPM / mean(observed_ratio, na.rm = TRUE)
+```
+
+Same thing but considering each population
+As many NA values in matrices from MPM in 1995 (age of most plants are unkown), year 1995 is not considered
+
+```{r}
+load("../../IPM/IPM_Kernal_Pop_Year.RData")
+ME2 <- list();ME1 <- list();MAu <- list();MPo <- list();MPe <- list();MCr <- list()
+
+for (i in 1:27){
+MPo[[i]] <- IPMKernalPopYear[[i]]; 
+MAu[[i]] <- IPMKernalPopYear[[i+27]]
+MPe[[i]] <- IPMKernalPopYear[[i+27*2]]
+ME1[[i]] <- IPMKernalPopYear[[i+27*3]]
+ME2[[i]] <- IPMKernalPopYear[[i+27*4]]
+MCr[[i]] <- IPMKernalPopYear[[i+27*5]]
+}
+MPo <- MPo[-1] #remove year=1995
+MAu <- MAu[-1]
+MPe <- MPe[-1]
+ME1 <- ME1[-1]
+ME2 <- ME2[-1]
+MCr <- MCr[-1]
+annees <- 1996:2022
+FloweringPlants <- read.csv("flower_data.csv")
+FloweringPlants <- FloweringPlants[FloweringPlants$Year>(annees[1]-1) & FloweringPlants$Year<(max(annees)+1),]
+
+
+Nf_est_IPM <- matrix(nrow = length(populations),ncol=length(annees))
+
+for (p in 1:length(populations)) {
+  # Initialisation
+  year <- annees[1]
+  Pop <- populations[p]
+  Nia <- array(data = 0, dim = c(length(annees), 8, MatrixDim))
+  
+  if (Pop=="E2") {matrices <- ME2;Nf <- FloweringPlants$E2}
+  if (Pop=="E1") {matrices <- ME1;Nf <- FloweringPlants$E1}
+  if (Pop=="Au") {matrices <- MAu;Nf <- FloweringPlants$Au}
+  if (Pop=="Po") {matrices <- MPo;Nf <- FloweringPlants$Po}
+  if (Pop=="Pe") {matrices <- MPe;Nf <- FloweringPlants$Pe}
+  if (Pop=="Cr") {matrices <- MCr;Nf <- FloweringPlants$Cr}
+  print(Pop)
+  # Initial distribution using the Global_IPM
+  A <- eigen.analysis(mean(matrices))
+  W <- function(age) {return(A$stable.stage[(50 * (age - 1) + 1):(50 * age)])}
+
+  # Density of flowering plants
+  Nf_dens <- sum(W(1) * flr0(ymid.1, 1, Pop=Pop, year=year)) 
+  for (a in 2:8) {Nf_dens <- Nf_dens + sum(W(a) * flr0(ymid.a, a, Pop=Pop, year=year))}
+
+  # Total number of plants 1st year using the observed number of flowering plants
+  N <- Nf[1] / Nf_dens
+  # Nb of individuals for each size class and age
+  for (a in 1:8) {for (i in 1:MatrixDim) {Nia[1, a, ] <- N * W(a)}}
+  
+  Nf_est_IPM[p, 1] <- Nf[1]
+  
+  # Iteration 
+  for (yr in 2:length(annees)) {
+    year <- annees[yr]
+    M <- matrices[[yr-1]]
+    A <- eigen.analysis(M)
+    W <- function(age) {return(A$stable.stage[(50 * (age - 1) + 1):(50 * age)])}
+    Fec <- function(a) {
+      #a age de plante mère
+      return(M[1:50, ((a - 1) * 50 + 1):(a * 50)])
+    }
+    P <- function(a) {
+      #a age de plante à t
+      if (a == 8) {
+        return(M[((50*(a-1))+1):(50*a), (50*(a-1)+1):(50*a)])
+        }
+      return(M[((50*a)+1):(50*(a+1)), (50*(a-1)+1):(50*a)])}
+   
+    # Nb of plants in each size class and age
+    for (a in 1:8) { # Seedling produced per plants of age a
+      Nia[yr, 1, ] <- Nia[yr, 1, ] + Fec(a) %*% Nia[yr - 1, a, ]
+    }
+    for (a in 2:8) { # Growth-Survival
+      Nia[yr, a, ] <- P(a) %*% Nia[yr - 1, a - 1, ]
+    }
+    Nia[yr, 8, ] <- Nia[yr, 8, ] + P(8) %*% Nia[yr - 1, 8, ]
+    
+    #Calcul du nombre de plantes en fleurs
+    Nf_est_IPM[p, yr] <- sum(Nia[yr, 1, ] * flr0(ymid.1, 1, Pop=Pop, year=year))
+    for (a in 2:8) {
+      Nf_est_IPM[p, yr] <- Nf_est_IPM[p, yr] + sum(Nia[yr, a, ] * flr0(ymid.a, a, Pop=Pop, year=year))
+      
+   }
+  }
+  
+  #last year
+    year <- 2022
+    M <- matrices[[yr-1]]
+    A <- eigen.analysis(M)
+    W <- function(age) {return(A$stable.stage[(50 * (age - 1) + 1):(50 * age)])}
+    Fec <- function(a) {
+      #a age de plante mère
+      return(M[1:50, ((a - 1) * 50 + 1):(a * 50)])
+    }
+    P <- function(a) {
+      #a age de plante à t
+      if (a == 8) {
+        return(M[((50*(a-1))+1):(50*a), (50*(a-1)+1):(50*a)])
+        }
+      return(M[((50*a)+1):(50*(a+1)), (50*(a-1)+1):(50*a)])}
+   
+    # Nb of plants in each size class and age
+    for (a in 1:8) { # Seedling produced per plants of age a
+      Nia[yr, 1, ] <- Nia[yr, 1, ] + Fec(a) %*% Nia[yr - 1, a, ]
+    }
+    for (a in 2:8) { # Growth-Survival
+      Nia[yr, a, ] <- P(a) %*% Nia[yr - 1, a - 1, ]
+    }
+    Nia[yr, 8, ] <- Nia[yr, 8, ] + P(8) %*% Nia[yr - 1, 8, ]
+    
+    #Calcul du nombre de plantes en fleurs
+    Nf_est_IPM[p, yr] <- sum(Nia[yr, 1, ] * flr0(ymid.1, 1, Pop=Pop, year=year))
+    for (a in 2:8) {
+      Nf_est_IPM[p, yr] <- Nf_est_IPM[p, yr] + sum(Nia[yr, a, ] * flr0(ymid.a, a, Pop=Pop, year=year))
+  
+  
+}
+}
+
+
+plot(y=Nf_est_IPM[1,], x=annees, type="l", ylim=c(0,max(c(Nf_est_IPM[1,],FloweringPlants$E2),na.rm=TRUE)), xlab="Year", ylab="Number of flowering plants") ; lines(y=FloweringPlants$E2, x=annees, col="red"); title("E2")
+
+plot(y=Nf_est_IPM[2,], x=annees,type="l",ylim=c(0,max(c(Nf_est_IPM[2,],FloweringPlants$E1),na.rm=TRUE)), xlab="Year", ylab="Number of flowering plants");lines(y=FloweringPlants$E1, x=annees, col="red"); title("E1")
+
+plot(y=Nf_est_IPM[3,], x=annees,type="l",ylim=c(0,max(c(Nf_est_IPM[3,],FloweringPlants$Au),na.rm=TRUE)), xlab="Year", ylab="Number of flowering plants");lines(y=FloweringPlants$Au, x=annees, col="red"); title("Auzils")
+
+plot(y=Nf_est_IPM[4,], x=annees,type="l",ylim=c(0,max(c(Nf_est_IPM[4,],FloweringPlants$Po),na.rm=TRUE)), xlab="Year", ylab="Number of flowering plants");lines(y=FloweringPlants$Po, x=annees, col="red"); title("Portes")
+
+plot(y=Nf_est_IPM[5,], x=annees,type="l",ylim=c(0,max(c(Nf_est_IPM[5,],FloweringPlants$Pe),na.rm=TRUE)), xlab="Year", ylab="Number of flowering plants");lines(y=FloweringPlants$Pe, x=annees, col="red"); title("Peyral")
+
+plot(y=Nf_est_IPM[6,], x=annees,type="l",ylim=c(0,max(c(Nf_est_IPM[6,],FloweringPlants$Cr),na.rm=TRUE)), xlab="Year", ylab="Number of flowering plants");lines(y=FloweringPlants$Cr, x=annees, col="red"); title("Cruzades")
+
+```
+
+```{r}
+Nb_flower_IPM <- expand_grid(
+  Pop = populations,
+  year = annees)
+
+Nb_flower_IPM$estimated <- as.vector(t(Nf_est_IPM))
+Nb_flower_IPM$observed[Nb_flower_IPM$Pop=="E2"] <- FloweringPlants$E2
+Nb_flower_IPM$observed[Nb_flower_IPM$Pop=="E1"] <- FloweringPlants$E1
+Nb_flower_IPM$observed[Nb_flower_IPM$Pop=="Au"] <- FloweringPlants$Au
+Nb_flower_IPM$observed[Nb_flower_IPM$Pop=="Po"] <- FloweringPlants$Po
+Nb_flower_IPM$observed[Nb_flower_IPM$Pop=="Pe"] <- FloweringPlants$Pe
+Nb_flower_IPM$observed[Nb_flower_IPM$Pop=="Cr"] <- FloweringPlants$Cr
+Nb_flower_IPM <- Nb_flower_IPM %>%
+  group_by(Pop) %>%
+  mutate(lim = max(observed,estimated,na.rm=TRUE))
+
+r2_data_IPM <- Nb_flower_IPM %>%
+  group_by(Pop) %>%
+  summarise(
+    r2 = summary(lm(estimated ~ observed))$r.squared,
+    biais = mean(estimated - observed, na.rm = TRUE),
+    biais_relatif = 100 * biais / mean(observed, na.rm = TRUE))
+
+labels_r2_IPM <- paste0(r2_data_IPM$Pop, " (R² = ", round(r2_data_IPM$r2, 2), ")")
+
+ggplot(Nb_flower_IPM, aes(x = observed, y = estimated)) +
+  geom_point(size = 2, alpha = 0.8, aes(color = as.factor(Pop))) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  labs(y = "Estimated number of flowering plants",
+       x = "Observed number of flowering plants",
+    color = "Population") +
+  theme_minimal() +
+  scale_color_viridis_d(
+    option = "plasma",
+    labels = labels_r2_IPM)+
+  facet_wrap(~Pop,scales="free")+
+  geom_blank(aes(x = lim, y = lim))
+```
+
+
+
+```{r}
+load("../MPM/Aumatrices.Rdata");matricesAu <- matrices
+load("../MPM/Crmatrices.Rdata");matricesCr <- matrices
+load("../MPM/E1matrices.Rdata");matricesE1 <- matrices
+load("../MPM/E2matrices.Rdata");matricesE2 <- matrices
+load("../MPM/Pematrices.Rdata");matricesPe <- matrices
+load("../MPM/Pomatrices.Rdata");matricesPo <- matrices
+
+Nf_est_MPM <- matrix(NA, nrow=length(populations), ncol=length(annees))
+
+for (p in 1:length(populations)) {
+
+  Pop <- populations[p]
+  if (Pop=="E2") {matrices <- matricesE2;Nf <- FloweringPlants$E2}
+  if (Pop=="E1") {matrices <- matricesE1;Nf <- FloweringPlants$E1}
+  if (Pop=="Au") {matrices <- matricesAu;Nf <- FloweringPlants$Au}
+  if (Pop=="Po") {matrices <- matricesPo;Nf <- FloweringPlants$Po}
+  if (Pop=="Pe") {matrices <- matricesPe;Nf <- FloweringPlants$Pe}
+  if (Pop=="Cr") {matrices <- matricesCr;Nf <- FloweringPlants$Cr}
+
+   ev <- eigen(mean(matrices)) #will be used to define distribution at t=0 
+   W <- abs(Re(ev$vectors[,1]))
+   W <- W/sum(W)
+   N <- round(W*Nf[1]/W[3])
+   Nf_est_MPM[p,1] <- Nf[1]
+    
+   for (i in 2:length(annees)){
+   M <- matrices[[i]]
+   ev <- eigen(M)
+   N <- M%*%N
+   Nf_est_MPM[p,i] <- N[3]
+  }
+}
+
+
+plot(y=Nf_est_MPM[1,], x=annees, type="l", ylim=c(0,max(c(Nf_est_MPM[1,],FloweringPlants$E2),na.rm=TRUE)), xlab="Year", ylab="Number of flowering plants") ; lines(y=FloweringPlants$E2, x=annees, col="red"); title("E2")
+
+plot(y=Nf_est_MPM[2,], x=annees,type="l",ylim=c(0,max(c(Nf_est_MPM[2,],FloweringPlants$E1),na.rm=TRUE)), xlab="Year", ylab="Number of flowering plants");lines(y=FloweringPlants$E1, x=annees, col="red"); title("E1")
+
+plot(y=Nf_est_MPM[3,], x=annees,type="l",ylim=c(0,max(c(Nf_est_MPM[3,],FloweringPlants$Au),na.rm=TRUE)), xlab="Year", ylab="Number of flowering plants");lines(y=FloweringPlants$Au, x=annees, col="red"); title("Auzils")
+
+plot(y=Nf_est_MPM[4,], x=annees,type="l",ylim=c(0,max(c(Nf_est_MPM[4,],FloweringPlants$Po),na.rm=TRUE)), xlab="Year", ylab="Number of flowering plants");lines(y=FloweringPlants$Po, x=annees, col="red"); title("Portes")
+
+plot(y=Nf_est_MPM[5,], x=annees,type="l",ylim=c(0,max(c(Nf_est_MPM[5,],FloweringPlants$Pe),na.rm=TRUE)), xlab="Year", ylab="Number of flowering plants");lines(y=FloweringPlants$Pe, x=annees, col="red"); title("Peyral")
+
+plot(y=Nf_est_MPM[6,], x=annees,type="l",ylim=c(0,max(c(Nf_est_MPM[6,],FloweringPlants$Cr),na.rm=TRUE)), xlab="Year", ylab="Number of flowering plants");lines(y=FloweringPlants$Cr, x=annees, col="red"); title("Cruzades")
+```
+
+
+Stat
+
+```{r,warning=FALSE}
+Nb_flower_MPM <- expand_grid(
+  Pop = populations,
+  year = annees)
+
+Nb_flower_MPM$estimated <- as.vector(t(Nf_est_MPM))
+Nb_flower_MPM$observed[Nb_flower_MPM$Pop=="E2"] <- FloweringPlants$E2
+Nb_flower_MPM$observed[Nb_flower_MPM$Pop=="E1"] <- FloweringPlants$E1
+Nb_flower_MPM$observed[Nb_flower_MPM$Pop=="Au"] <- FloweringPlants$Au
+Nb_flower_MPM$observed[Nb_flower_MPM$Pop=="Po"] <- FloweringPlants$Po
+Nb_flower_MPM$observed[Nb_flower_MPM$Pop=="Pe"] <- FloweringPlants$Pe
+Nb_flower_MPM$observed[Nb_flower_MPM$Pop=="Cr"] <- FloweringPlants$Cr
+Nb_flower_MPM <- Nb_flower_MPM %>%
+  group_by(Pop) %>%
+  mutate(lim = max(observed,estimated,na.rm=TRUE))
+
+r2_data_MPM <- Nb_flower_MPM %>%
+  group_by(Pop) %>%
+  summarise(
+    r2 = summary(lm(estimated ~ observed))$r.squared,
+    biais = mean(estimated - observed, na.rm = TRUE),
+    biais_relatif = 100 * biais / mean(observed, na.rm = TRUE))
+
+labels_r2_MPM <- paste0(r2_data_MPM$Pop, " (R² = ", round(r2_data_MPM$r2, 2), ")")
+
+ggplot(Nb_flower_MPM, aes(x = observed, y = estimated)) +
+  geom_point(size = 2, alpha = 0.8, aes(color = as.factor(Pop))) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  labs(y = "Estimated number of flowering plants",
+       x = "Observed number of flowering plants",
+    color = "Population") +
+  theme_minimal() +
+  scale_color_viridis_d(
+    option = "plasma",
+    labels = labels_r2_MPM)+
+  facet_wrap(~Pop,scales="free")+
+  geom_blank(aes(x = lim, y = lim))
+```
+
+Comparaison IPM versus MPM
+
+```{r}
+r2_data_IPM <- r2_data_IPM %>% mutate(model = "IPM")
+r2_data_MPM <- r2_data_MPM %>% mutate(model = "MPM")
+r2_data_joined <- bind_rows(r2_data_IPM, r2_data_MPM)
+
+
+ggplot(r2_data_joined, aes(x = Pop, y = r2, fill = model)) +
+  geom_col(position = "dodge") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Comparaison du R² par population",
+       x = "Population", y = "R²", fill = "Modèle")
+
+ggplot(r2_data_joined, aes(x = Pop, y = biais, fill = model)) +
+  geom_col(position = "dodge") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Biais (prédit - observé) par population",
+       x = "Population", y = "Biais")
+
+ggplot(r2_data_joined, aes(x = Pop, y = biais_relatif, fill = model)) +
+  geom_col(position = "dodge") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Biais relatif (%) par population",
+       x = "Population", y = "Biais relatif (%)")
 
 
 ```
