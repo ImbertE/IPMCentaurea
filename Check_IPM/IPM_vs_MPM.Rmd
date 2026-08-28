@@ -52,21 +52,6 @@ for(i in 1:length(annees)) {
 
 cor.test(GrowthRateIPM$Lambda, GrowthRateMPM$Lambda)
 
-ggplot(data=GrowthRateIPM, aes(x=Year,y=Lambda))+
-    geom_point(color="red")+
-    geom_line(color="red")+
-    geom_point(data=GrowthRateMPM, color="black")+
-    geom_line(data=GrowthRateMPM, color="black")+
-    theme_bw() +
-    ylim(0.3,2.5)+
-   labs(x = "Year",y = "Growth rate",
-        subtitle="Red line = IPM
-         Black line = MPM")
-
-   
-
-
-
 ```
 
 Comparisons of vital rates
@@ -247,7 +232,6 @@ for(i in 1:27){
   lhtIPM$fs0[i] <- VitalRatesIPM[[i]][1,3]
   lhtIPM$s2[i] <- VitalRatesIPM[[i]][2,2]+VitalRatesIPM[[i]][3,2]
   lhtIPM$a2[i] <- VitalRatesIPM[[i]][3,2]/(VitalRatesIPM[[i]][2,2]+VitalRatesIPM[[i]][3,2])
-  if (i==28){break}
   lhtMPM$s1[i] <- matrices[[i]][2,1]
   lhtMPM$s2_1a2[i] <- matrices[[i]][2,2]
   lhtMPM$s2a2[i] <- matrices[[i]][3,2]
@@ -259,67 +243,90 @@ lht[lht$Model=="IPM",] <- lhtIPM
 lht[lht$Model=="MPM",] <- lhtMPM
 ```
 
+
+Figures
 ```{r}
-lht %>% 
+ Figure3a <- lht %>% 
   ggplot(aes(x=years))+
+  geom_point(aes(y=s1,color=as.factor(Model)),show.legend = FALSE)+ 
   geom_line(aes(y=s1,color=as.factor(Model)),show.legend = FALSE)+
   scale_color_manual(values = c("IPM" = "red", "MPM" = "black"))+
-  theme_bw()+
-  labs(x = "Years",
-      y = "Seedling survival (s1(1-a1))",
-      color = "Model")+
-  theme(
-    axis.title.x = element_text(size = 14),  # Taille du titre axe X
-    axis.title.y = element_text(size = 14),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 12),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 12)    # Taille des graduations axe Y
-  )
-
-lht %>% 
+  theme_bw(base_size = 6) +
+  labs(x = "Year",
+      y = "Survival",
+      subtitle = "A- Seedling survival")
+  
+Figure3b <- lht %>% 
   ggplot(aes(x=years))+
-  geom_line(aes(y=fs0,color=as.factor(Model)),show.legend = FALSE)+
-  scale_color_manual(values = c("IPM" = "red", "MPM" = "black"))+
-  theme_bw()+
-  labs(x = "Years",
-      y = "Fecundity (fs0)",
-      color = "Model")+
-  theme(
-    axis.title.x = element_text(size = 14),  # Taille du titre axe X
-    axis.title.y = element_text(size = 14),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 12),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 12)    # Taille des graduations axe Y
-  )
-
-
-lht %>% 
-  ggplot(aes(x=years))+
+  geom_point(aes(y=s2,color=as.factor(Model)),show.legend = FALSE)+ 
   geom_line(aes(y=s2,color=as.factor(Model)),show.legend = FALSE)+
   scale_color_manual(values = c("IPM" = "red", "MPM" = "black"))+
-  theme_bw()+
-  labs(x = "Years",
-      y = "Rosette survival (s2)",
-      color = "Model")+
-  theme(
-    axis.title.x = element_text(size = 14),  # Taille du titre axe X
-    axis.title.y = element_text(size = 14),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 12),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 12)    # Taille des graduations axe Y
-  )
+  theme_bw(base_size = 6) +
+  labs(x = "Year",
+      y = "Survival",
+      subtitle = "B- Rosette survival")
 
-lht %>% 
+
+Figure3c <- lht %>% 
   ggplot(aes(x=years))+
+  geom_point(aes(y=a2,color=as.factor(Model)),show.legend = FALSE)+ 
   geom_line(aes(y=a2,color=as.factor(Model)),show.legend = FALSE)+
   scale_color_manual(values = c("IPM" = "red", "MPM" = "black"))+
-  theme_bw()+
-  labs(x = "Years",
-      y = "Rosette flowering (a2)",
-      color = "Model")+
-  theme(
-    axis.title.x = element_text(size = 14),  # Taille du titre axe X
-    axis.title.y = element_text(size = 14),  # Taille du titre axe Y
-    axis.text.x = element_text(size = 12),   # Taille des graduations axe X
-    axis.text.y = element_text(size = 12)    # Taille des graduations axe Y
-  )
+  theme_bw(base_size = 6) +
+  labs(x = "Year",
+      y = "Flowering Probability",
+      subtitle = "C- Flowering probability")
+
+
+Figure3d <- lht %>% 
+  ggplot(aes(x=years))+
+  geom_point(aes(y=fs0,color=as.factor(Model)),show.legend = FALSE)+ 
+  geom_line(aes(y=fs0,color=as.factor(Model)),show.legend = FALSE)+
+  scale_color_manual(values = c("IPM" = "red", "MPM" = "black"))+
+  theme_bw(base_size = 6) +
+  labs(x = "Year",
+      y = "Fecundity",
+      subtitle = "D- Fecundity per flowering plant")
+
+inset <- lht[lht$years<2015,] %>%
+  ggplot(aes(x=years)) +
+  geom_point(aes(y=fs0,color=as.factor(Model)),show.legend = FALSE)+ 
+  geom_line(aes(y=fs0,color=as.factor(Model)),show.legend = FALSE) +
+  scale_color_manual(values = c("IPM" = "red", "MPM" = "black")) +
+  labs(x = "",
+      y = "") +
+  theme_bw(base_size = 6)
+
+
+Figure3e <- ggplot(data=GrowthRateIPM, aes(x=Year, y=Lambda)) +
+    geom_point(color="red", show.legend = FALSE) +
+    geom_line(color="red", show.legend = FALSE) +
+    geom_point(data=GrowthRateMPM, color="black", show.legend = FALSE) +
+    geom_line(data=GrowthRateMPM, color="black", show.legend = FALSE) +
+    annotate("segment", x = 1997, xend = 1999, y = 2.2, yend = 2.2,
+           colour = "red", size = 0.5) +
+    annotate("point", x=1998,y=2.2, colour="red", size=2)  +
+   annotate("text", x = 2000, y = 2.2, label = "Integral Projection Model", hjust = 0) +
+  annotate("segment", x = 1997, xend = 1999, y = 1.9, yend = 1.9,
+           colour = "black", size = 0.5) +
+  annotate("point", x=1998,y=1.9, colour="black", size=2)  +
+  annotate("text", x = 2000, y = 1.9, label = "Matrix Projection Model", hjust = 0) +
+    theme_bw(base_size = 6) +
+    ylim(0,2.5)+
+    labs(x = "Year",y = "Growth rate",
+     subtitle="E- Global Population Growth rate")
+
+
+library(patchwork)
+Figure3d <- Figure3d +
+  inset_element(inset, left = 0.01, bottom = 0.2, right = 0.60, top = 0.95)
+
+
+cairo_ps("Figure_3.ps", onefile=TRUE, width=8.27, height = 11.69)
+Figure3a + Figure3b  + Figure3c + Figure3d + Figure3e +
+plot_layout(ncol=2, nrow=3)
+dev.off()
+
 ```
 
 Zoom sur le fs0
@@ -331,6 +338,10 @@ for(k in 1:length(annees)){
   i[k] <- VitalRatesIPM[[k]][1,3] 
   m[k] <- matrices[[k]][1,3]
 }
+
+fs0 <- data.frame(anne)
+
+
 plot(x=annees,i,ylim=c(0,30),type="l",col="red", xlab="Year", ylab="fs0")
 lines(x=annees,m,col="black")
 ```

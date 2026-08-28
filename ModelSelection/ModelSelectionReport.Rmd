@@ -11,9 +11,9 @@ First, graphical representations of raw data and the final selected model for ea
 Summary of each model and (quasi) explicit formula for splines
 
 Final step : each model is renamed and a R object is created to be imported in the IPM script
+Production of FIGURE1 for MS
 
-
-Import data, models
+Import data and models
 
 ```{r,message=FALSE}
 rm(list=ls())
@@ -43,42 +43,9 @@ load("SelectedModels.RData")
 spaMM.options(separation_max=70)
 ```
 
-```{r,include=FALSE}
-annees <- 1995:2022
-populations <- c("E2","E1","Au","Po","Pe","Cr")
-
-taille_range <- seq(0.5, 25, by = 0.5) 
-age_range <- 1:8
-
-fake_data <- expand.grid(
-  year = annees,
-  Pop = populations,
-  Size0Mars = taille_range,
-  Age = age_range
-)
-
-fake_data <- fake_data %>% 
-  mutate(Individu = row_number()) 
-
-fake_data1 <- fake_data[fake_data$Age==1,]
-fake_data2 <- fake_data[fake_data$Age>1,]
-fake_data3 <- expand.grid(
-  year = annees,
-  Pop = populations,
-  Size0Mars = taille_range,
-  Age = age_range,
-  Size1 = taille_range)
-
-fake_dataEstb <- expand.grid(
-  year = annees,
-  Pop = populations,
-  Capitule = 1:200
-  )
-```
-
 Survival Probability
-
 ```{r,echo=FALSE,warning=FALSE,out.width="50%"}
+
 survdata <- centauree_data[centauree_data$Flowering!=1 ,]
 
 survdata %>%
@@ -89,7 +56,7 @@ survdata %>%
   geom_point(aes(y = survivalProba), color = "red", size = 0.5) +
   geom_line(aes(y = survivalProba), color = "red") +
   labs(title = "Relationship between size and survival",
-       x = "Size",
+       x = "Size (cm)",
        y = "Survival",
        subtitle = "Grey points : observed survival (0/1)
 Red points : mean value for each size") +
@@ -104,7 +71,7 @@ survdata %>%
   geom_point(aes(x = Age, y = survivalProba), color = "red", size = 1) +
   geom_line(aes(x = Age, y = survivalProba), color = "red") +
   labs(title = "Relationship between age and survival",
-       x = "age",
+       x = "Age (year)",
        y = "Survival",
        subtitle = "Grey points : observed survival (0/1)
 Red points : mean value for each age") +
@@ -115,7 +82,6 @@ Red points : mean value for each age") +
 
 Seedling survival
 Selected model for seedling survival Seedling_survAIC[[1]]
-
 ```{r,echo=FALSE,warning=FALSE,out.width="50%"}
 survdata1 <- survdata[survdata$Age==1,]
 
@@ -132,26 +98,23 @@ SplinesAsPolySpaMM(Seedling_surv, "bs(Size0Mars, df = 4, degree = 2)")
 Seedling_survpredict <- predict(Seedling_surv, survdata1, type="response")
 
 survdata1 %>%
-  mutate(predict = Seedling_survpredict) %>%
+  mutate(predict = Seedling_survpredict) %>%  
   group_by(Size0Mars) %>%
-  mutate(survivalProba = sum(Survie, na.rm = TRUE) / n(), predict=mean(predict)) %>% 
+  mutate(survivalProba = sum(Survie, na.rm = TRUE) / n(), predict=mean(predict, na.rm=T)) %>% 
   ggplot(aes(x = Size0Mars, y = Survie)) +
-  geom_count(alpha = 0.6) +  # Points dimensionnés selon la fréquence
+  geom_count(alpha = 0.6) +
   geom_point(aes(y = survivalProba), color = "red", size = 0.5) +
   geom_line(aes(y = survivalProba), color = "red") +
   geom_line(aes(y=predict), color="green") +
-     labs(title = "Relationship between size and survival",
-       x = "Size",
-       y = "Survival",
-       subtitle = "Grey points : observed survival (0/1)
+  labs(title = "Relationship between seedling size and survival",
+     x = "Size (cm)",
+     y = "Seedling Survival",
+   subtitle = "Grey points : observed survival (0/1)
 Red line : mean value for each size
-Green line : predicted value") +
+Green line : predicted value for each size") +
   ylim(0, 1) +
   theme_minimal()
 ```
-
-
-
 
 
 Age > 1
@@ -175,32 +138,32 @@ Plant_survpredict <- predict(Plant_surv, survdata2, type="response")
 survdata2 %>%
   mutate(predict = Plant_survpredict) %>%
   group_by(Size0Mars) %>%
-  mutate(survivalProba = sum(Survie, na.rm = TRUE) / n(), predict=mean(predict)) %>% 
+  mutate(survivalProba = sum(Survie, na.rm = TRUE) / n(), predict=mean(predict, na.rm=T)) %>% 
   ggplot(aes(x = Size0Mars, y = Survie)) +
-  geom_count(alpha = 0.6) +  # Points dimensionnés selon la fréquence
+  geom_count(alpha = 0.6) +
   geom_point(aes(y = survivalProba), color = "red", size = 0.5) +
   geom_line(aes(y = survivalProba), color = "red") +
   geom_line(aes(y=predict), color="green") +
-  labs(title = "Relationship between size and survival",
-       x = "Size",
+    labs(title = "Relationship between rosette size and survival",
+       x = "Size (cm)",
        y = "Survival",
        subtitle = "Grey points : observed survival (0/1)
 Red line : mean value for each size
 Green line : predicted value for each size") +
   ylim(0, 1) +
   theme_minimal()
-  
+
 survdata2 %>%
   mutate(predict = Plant_survpredict) %>%
   group_by(Age) %>%
   mutate(survivalProba = sum(Survie, na.rm = TRUE) / n(), predict=mean(predict)) %>% 
   ggplot(aes(x = Age, y = Survie)) +
-  geom_count(alpha = 0.6) +  # Points dimensionnés selon la fréquence
+  geom_count(alpha = 0.6) +  # Points dimensionés selon la fréquence
   geom_point(aes(y = survivalProba), color = "red", size = 0.5) +
   geom_line(aes(y = survivalProba), color = "red") +
   geom_line(aes(y=predict), color="green") +
  labs(title = "Relationship between age and survival",
-       x = "Age",
+       x = "Age (year)",
        y = "Survival",
        subtitle = "Grey points : observed survival (0/1)
 Red line : mean value for each age
@@ -216,7 +179,7 @@ Selected model Growthglm1
 ```{r}
 growthdata <- centauree_data[!is.na(centauree_data$Size1Mars), ]
 growthdata <- growthdata[growthdata$Size1Mars != 0, ]
-Growthpredict <- predict(Growthglm1, newdata = growthdata)[,1]
+Growthpredict <- predict(Growthglm1, newdata = growthdata)
 Growthpredict <- exp(log(Growthpredict)/0.4343354) #back transformation 
 
 
@@ -224,14 +187,13 @@ growthdata %>%
   mutate(predicted_value = Growthpredict) %>%
   ggplot(aes(y = Size1Mars, x = Size0Mars)) +
   geom_count(alpha=0.5) +
-  geom_point(aes(y=predicted_value), col="green") +
-  labs(title = "Relation entre le taux de croissance et la taille",
-       y = "Taille à t+1",
-       x = "Taille à t",
-     subtitle = "Grey points : observed survival (0/1)
+  geom_point(aes(y=Growthpredict), col="green") +
+  labs(title = "Relationship between size at t and size at t+1",
+       y = "Size at t+1 (cm)",
+       x = "Size at t (cm)",
+     subtitle = "Grey points : observed values
    Green points : predicted values") +
   theme_minimal()
-
 ```
 
 
@@ -248,17 +210,19 @@ result <- function(combi) {
 
 Flowglm <- result(flowmodAIC[[1]])
 summary(Flowglm)
-Flowpredict <- predict(Flowglm, newdata = centauree_data)[,1]
+Flowpredict <- predict(Flowglm, newdata = centauree_data)
 
+                        
 centauree_data %>%
   mutate(predicted_value = Flowpredict) %>%
   group_by(Size0Mars) %>%
-  mutate(floweringProba = sum(Flowering, na.rm = TRUE) / n(), predict=mean(predicted_value)) %>%   ggplot(aes(x = Size0Mars, y = Flowering)) +
+  mutate(floweringProba = sum(Flowering, na.rm = TRUE) / n(), predict=mean(predicted_value)) %>%
+  ggplot(aes(x = Size0Mars, y = Flowering)) +
   geom_count(alpha = 0.6) +  
   geom_point(aes(y = floweringProba), color = "red", size = 0.5) +
   geom_line(aes(y = floweringProba), color = "red") +
   geom_line(aes(y=predict), col="green") +
-  labs(title = "Relationship between flowering probability and size",
+  labs(title = "Relationship between size and flowering probability",
     x = "Size (cm)",
     y = "Flowering",
     subtitle = "Grey points : observed reproduction (0/1)
@@ -270,29 +234,25 @@ Green line : predicted value") +
 centauree_data %>%
   mutate(predicted_value = Flowpredict) %>%
   group_by(Age) %>%
-  mutate(floweringProba = sum(Flowering, na.rm = TRUE) / n(), predict=mean(predicted_value)) %>%   ggplot(aes(x = Age, y = Flowering)) +
+  mutate(floweringProba = sum(Flowering, na.rm = TRUE) / n(), predict=mean(predicted_value)) %>%
+  ggplot(aes(x = Age, y = Flowering)) +
   geom_count(alpha = 0.6) +  
   geom_point(aes(y = floweringProba), color = "red", size = 0.5) +
   geom_line(aes(y = floweringProba), color = "red") +
   geom_line(aes(y = predict), color = "green") +
-    labs(title = "Relationship between flowering probability and age",
-    x = "Age",
+    labs(title = "Relationship between age and flowering probability",
+    x = "Age (year)",
     y = "Flowering",
     subtitle = "Grey points : observed reproduction (0/1)
 Red points : mean value for each age
 Green line : predicted value") +
   ylim(0, 1) +
   theme_minimal()
-
-
-
-
 ```
 
 
 
 Fecundity
-
 ```{r,echo=FALSE,out.width="50%",warning=FALSE}
 
 cptl_data <- centauree_data[centauree_data$Flowering==1,]
@@ -308,9 +268,9 @@ cptl_data %>%
   mutate(predicted_value = Cptlpredict) %>%
   ggplot(aes(x = Size0Mars, y = Capitule)) +
   geom_point(col="red") +
-  geom_point(aes(y=predicted_value), col="green") +
-  labs(title = "Relation entre la taille et le nombre de capitules",
-       y = "Nbre de capitules",
+  geom_point(aes(y=Cptlpredict), col="green") +
+  labs(title = "Relationship between size and number of flower heads",
+       y = "Nb of flower heads",
        x = "Size (cm)",
      subtitle = "Red points : observed values
    Green points : predicted values") +
@@ -326,7 +286,7 @@ cptl_data %>%
   geom_point(aes(y = Observed), color = "red", size = 0.5) +
   geom_line(aes(y = Observed), color = "red") +
   geom_line(aes(y = predict), color = "green") +
-  labs(title = "Relationship between fecundity and year",
+  labs(title = "Relationship between year and fecundity",
     x = "Year",
     y = "Nb of seed heads",
     subtitle = 
@@ -346,7 +306,8 @@ effect_formula <- paste(unlist(pltmodAIC[[1]]), collapse = "+")
 formula <- as.formula(paste("Size0Mars", "~", effect_formula))
 Pltglm <- fitme(formula, data = plantule_data, family=Gamma(log), method = "PQL/L")
 summary(Pltglm)
-Pltpredict <- predict(Pltglm, newdata = plantule_data, type=("response"))[,1]
+
+Pltpredict <- predict(Pltglm, newdata = plantule_data, type=("response"))
 
 
 # Seedling size distribution
@@ -390,8 +351,6 @@ ggplot(mydata, aes(x = Pop, y = Mean, fill=Type)) +
 subtitle = "Obs. : mean of observed values
 Pred. : predicted value") +
   theme_minimal()
-
-
 ```
 
 
@@ -399,7 +358,7 @@ Pred. : predicted value") +
 Establishement rate
 
 
-```{r}
+```{r, echo=FALSE}
 #First replace NA values for number of capitula using predicted values from selected model
 cptldata_predi <- IPM_data[IPM_data$Flowering==1,] %>%
   mutate(Capitule = ifelse(is.na(Capitule),exp(predict(Cptlglm1)),Capitule))
@@ -459,4 +418,235 @@ Estbrate <- Estbglm
 save(Seedling_surv,Plant_surv,Growth,Flowering,Fecundity,Seedling_size,Estbrate,
      file="../IPM/VitalRates.RData")
 ```
+
+
+Figure for MS
+
+```{r, warning=FALSE, echo=FALSE}
+
+annees <- 1995:2022
+populations <- c("E2","E1","Au","Po","Pe","Cr")
+
+seedling_size <- seq(0.5,12.5, by=0.1)
+taille_range <- seq(0.5, 25, by = 0.5) 
+age_range <- 1:8
+
+fake_data1 <- expand.grid(
+  year = annees,
+  Pop = populations,
+  Size0Mars = seedling_size,
+  Age = 1
+)
+
+fake_data <- expand.grid(
+  year = annees,
+  Pop = populations,
+  Size0Mars = taille_range,
+  Age = age_range
+)
+
+fake_data2 <- fake_data[fake_data$Age>1,]
+
+
+fake_dataEstb <- expand.grid(
+  year = annees,
+  Pop = populations,
+  Capitule = 1:200
+  )
+
+
+library(patchwork)
+
+Figure1a <-  survdata1 %>%
+  group_by(Size0Mars) %>%
+  mutate(survivalProba = sum(Survie, na.rm = TRUE) / n()) %>% 
+  ggplot(aes(x = Size0Mars, y = Survie)) +
+  geom_count(alpha=0.6, show.legend = FALSE) +
+  ylim(0, 1) +
+  theme_minimal(base_size = 6) +
+  labs(title = "A- Relationship between seedling size and survival",
+       x = "Size (cm)",
+       y = "Seedling Survival")
+
+fake_data1$predic <- predict(Seedling_surv, fake_data1, type="response")[,1]
+fake_data1 <- cbind(fake_data1, get_intervals(Seedling_surv, fake_data1))
+
+data_summary <- fake_data1 %>%
+  group_by(Size0Mars) %>%
+  summarise(predic = mean(predic), predVar_0.025 = mean(predVar_0.025), predVar_0.975 = mean(predVar_0.975))
+
+Figure1a <- Figure1a +
+  geom_ribbon(data=data_summary, aes(x=Size0Mars, ymin=predVar_0.025, ymax=predVar_0.975), fill="green", alpha=0.3, inherit.aes = FALSE) +
+  geom_line(data=data_summary,aes(x=Size0Mars, y=predic), color="green") +
+  geom_line(data=data_summary,aes(x=Size0Mars,y=predVar_0.025), color="green", alpha=0.4) +
+  geom_line(data=data_summary,aes(x=Size0Mars,y=predVar_0.975), color="green", alpha=0.4) 
+
+
+
+Figure1b <-  survdata2 %>%
+  group_by(Size0Mars) %>%
+  mutate(survivalProba = sum(Survie, na.rm = TRUE) / n()) %>% 
+  ggplot(aes(x = Size0Mars, y = Survie)) +
+  geom_count(alpha = 0.6, show.legend = FALSE) +
+  ylim(0, 1) +
+  theme_minimal(base_size = 6) +
+  labs(title = "B- Relationship between rosette size and survival",
+       x = "Size (cm)",
+       y = "Survival")
+
+fake_data2$predic <- predict(Plant_surv, fake_data2, type="response")[,1]
+fake_data2 <- cbind(fake_data2, get_intervals(Plant_surv, fake_data2, re.form = NA))
+
+data_summary <- fake_data2 %>%
+  group_by(Size0Mars) %>%
+  summarise(predic = mean(predic), predVar_0.025 = mean(predVar_0.025), predVar_0.975 = mean(predVar_0.975))
+
+
+Figure1b <- Figure1b +
+  geom_ribbon(data=data_summary, aes(x=Size0Mars, ymin=predVar_0.025, ymax=predVar_0.975), fill="green", alpha=0.3, inherit.aes = FALSE)+
+  geom_line(data=data_summary, aes(x=Size0Mars, y=predic), color="green") +
+  geom_line(data=data_summary, aes(x=Size0Mars,y=predVar_0.025), color="green", alpha=0.4) +
+  geom_line(data=data_summary, aes(x=Size0Mars,y=predVar_0.975), color="green", alpha=0.4) 
+  
+
+Figure1c <-  growthdata %>%
+  ggplot(aes(y = Size1Mars, x = Size0Mars)) +
+  geom_count(alpha=0.5, show.legend = FALSE) +
+  labs(title = "C- Relationship between size at t and size at t+1",
+       y = "Size at t+1 (cm)",
+       x = "Size at t (cm)") +
+ theme_minimal(base_size = 6)
+
+fake_data$predic <- exp(log(predict(Growth, fake_data)[,1])/0.4343354)
+CI <- get_intervals(Growth, fake_data, re.form = NA)
+fake_data$predVar_0.025 <- exp(log(CI[,1])/0.4343354)
+fake_data$predVar_0.975 <- exp(log(CI[,2])/0.4343354)
+
+data_summary <- fake_data %>%
+  group_by(Size0Mars) %>%
+  summarise(predic = mean(predic), predVar_0.025 = mean(predVar_0.025), predVar_0.975 = mean(predVar_0.975))
+
+Figure1c <- Figure1c +
+  geom_ribbon(data=data_summary, aes(x=Size0Mars, ymin=predVar_0.025, ymax=predVar_0.975), fill="green", alpha=0.3, inherit.aes = FALSE)+
+  geom_line(data=data_summary, aes(x=Size0Mars, y=predic), color="green") +
+  geom_line(data=data_summary, aes(x=Size0Mars,y=predVar_0.025), color="green", alpha=0.4) +
+  geom_line(data=data_summary, aes(x=Size0Mars,y=predVar_0.975), color="green", alpha=0.4) 
+
+
+
+Figure1d <- centauree_data %>%
+  group_by(Size0Mars) %>%
+  mutate(floweringProba = sum(Flowering, na.rm = TRUE) / n()) %>%
+  ggplot(aes(x = Size0Mars, y = Flowering)) +
+  geom_count(alpha = 0.6, show.legend = FALSE) +  
+   labs(title = "D- Relationship between size and flowering probability",
+    x = "Size (cm)",
+    y = "Flowering") +
+     ylim(0, 1) +
+ theme_minimal(base_size = 6)
+
+fake_data$predic <- predict(Flowering, fake_data, type="response")[,1]
+CI <- get_intervals(Flowering, fake_data, re.form = NA)
+fake_data$predVar_0.025 <- CI[,1]
+fake_data$predVar_0.975 <- CI[,2]
+
+data_summary <- fake_data %>%
+  group_by(Size0Mars) %>%
+  summarise(predic = mean(predic), predVar_0.025 = mean(predVar_0.025), predVar_0.975 = mean(predVar_0.975))
+
+Figure1d <- Figure1d +
+  geom_ribbon(data=data_summary, aes(x=Size0Mars, ymin=predVar_0.025, ymax=predVar_0.975), fill="green", alpha=0.3, inherit.aes = FALSE)+
+  geom_line(data=data_summary, aes(x=Size0Mars, y=predic), color="green") +
+  geom_line(data=data_summary, aes(x=Size0Mars,y=predVar_0.025), color="green", alpha=0.4) +
+  geom_line(data=data_summary, aes(x=Size0Mars,y=predVar_0.975), color="green", alpha=0.4) 
+
+
+Figure1e <- cptl_data %>%
+  ggplot(aes(x = Size0Mars, y = Capitule)) +
+  geom_point(size=1) +
+  labs(title = "E- Relationship between size and number of flower heads",
+       y = "Nb of flower heads",
+       x = "Size (cm)") +
+       theme_minimal(base_size = 6)
+
+fake_data$predic <- exp(predict(Fecundity, fake_data)[,1])
+CI <- get_intervals(Fecundity, fake_data, re.form = NA)
+fake_data$predVar_0.025 <- exp(CI[,1])
+fake_data$predVar_0.975 <- exp(CI[,2])
+
+data_summary <- fake_data %>%
+  group_by(Size0Mars) %>%
+  summarise(predic = mean(predic), predVar_0.025 = mean(predVar_0.025), predVar_0.975 = mean(predVar_0.975))
+
+Figure1e <- Figure1e +
+  geom_ribbon(data=data_summary, aes(x=Size0Mars, ymin=predVar_0.025, ymax=predVar_0.975), fill="green", alpha=0.3, inherit.aes = FALSE)+
+  geom_line(data=data_summary, aes(x=Size0Mars, y=predic), color="green") +
+  geom_line(data=data_summary, aes(x=Size0Mars,y=predVar_0.025), color="green", alpha=0.4) +
+  geom_line(data=data_summary, aes(x=Size0Mars,y=predVar_0.975), color="green", alpha=0.4) 
+
+
+Figure1f <- plantule_data %>%
+  group_by(year) %>%
+  summarise(Obsmean = mean(Size0Mars), Obssd=sd(Size0Mars),
+    n=n(),
+    se = Obssd / sqrt(n),
+    IC_low = Obsmean - 1.96 * se,
+    IC_high = Obsmean + 1.96 * se) %>%
+  ggplot(aes(x = year, y = Obsmean)) +
+  geom_point(size = 1.5) +
+  geom_line() +
+  geom_errorbar(aes(ymin = IC_low, ymax = IC_high), width = 0.2) +
+  labs(title = "F- Mean seedling size per year",
+    x = "Year",
+    y = "Size (cm)") + 
+ theme_minimal(base_size = 6)
+
+plantule_data$predic <- predict(Seedling_size, plantule_data)[,1]
+data_summary <- plantule_data %>%
+  group_by(year) %>%
+  summarise(predicmean = mean(predic), predicsd=sd(predic),
+    n=n(),
+    se = predicsd / sqrt(n),
+    IC_low = predicmean - 1.96 * se,
+    IC_high = predicmean + 1.96 * se)
+
+Figure1f <- Figure1f +
+  geom_ribbon(data=data_summary, aes(x=year, ymin=IC_low, ymax=IC_high), fill="green", alpha=0.3, inherit.aes = FALSE)+
+  geom_line(data=data_summary, aes(x=year, y=predicmean), color="green") +
+  geom_line(data=data_summary, aes(x=year,y=IC_low), color="green", alpha=0.4) +
+  geom_line(data=data_summary, aes(x=year,y=IC_high), color="green", alpha=0.4) 
+
+
+
+Figure1g <- Estb %>%
+  group_by(year) %>%
+  summarise(obsmean = mean(ratio), predmean = mean(predratio), obssd=sd(ratio),predsd=sd(predratio),
+    n=n(),
+    obsse = obssd / sqrt(n), predse = predsd / sqrt(n),
+    obsIC_low = pmax(obsmean - 1.96 * obsse, 0),
+    obsIC_high = obsmean + 1.96 * obsse,
+    predIC_low = pmax(predmean - 1.96 * predse,0),
+    predIC_high = predmean + 1.96 * predse) %>%
+  ggplot(aes(x = year, y = obsmean)) +
+  geom_line() +
+  geom_errorbar(aes(ymin = obsIC_low, ymax = obsIC_high), width = 0.2) +
+  geom_ribbon(aes(x=year, ymin=predIC_low, ymax=predIC_high), fill="green", alpha=0.3)+
+  geom_line(aes(x=year, y=predmean), color="green") +
+  geom_line(aes(x=year,y=predIC_low), color="green", alpha=0.4) +
+  geom_line(aes(x=year,y=predIC_high), color="green", alpha=0.4) +
+  labs(
+    title="G- Establishment rate",
+    y= "Establishment rate",
+       x="Year") +
+   ylim(0,3) +
+   theme_minimal(base_size = 6)
+
+
+cairo_ps("Figure_1.ps", onefile=TRUE, width = 8.27,  height = 11.69)
+Figure1a + Figure1b + Figure1c + Figure1d + Figure1e + Figure1f +Figure1g  +
+plot_layout(ncol = 2, nrow=4)  
+
+dev.off()
+```
+
 

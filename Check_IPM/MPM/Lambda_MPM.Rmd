@@ -1,0 +1,113 @@
+---
+title: "Asymptotic and stochastic Lambdas for MPM"
+author: "Eric Imbert"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    df_print: paged
+  word_document: default
+  pdf_document: default
+---
+
+Import matrices per population and per year 
+Import matrices per population 
+Will be used to define the initial distribution for each population
+
+
+```{r setup, include=FALSE}
+rm(list=ls())
+library(splines)
+library(tidyverse)
+library(spaMM)
+spaMM.options(separation_max=70)
+library(popbio)
+annees <- 1:26
+populations <- c("Po","Au","Pe","E1","E2","Cr")
+
+#Load the matrices 
+load("Aumatrices.Rdata"); MAu <- matrices[-1] #remove year=1995
+load("E1matrices.Rdata"); ME1 <- matrices[-1]
+load("E2matrices.Rdata"); ME2 <- matrices[-1]
+load("Pomatrices.Rdata"); MPo <- matrices[-1]
+load("Pematrices.Rdata"); MPe <- matrices[-1]
+load("Crmatrices.Rdata"); MCr <- matrices[-1]
+
+
+ #Asymptotic value per populations
+for (p in 1:length(populations)) {
+    Pop <- populations[p]
+  lambdaA <- NULL
+  if (Pop=="E2") {matrices <- ME2}
+  if (Pop=="E1") {matrices <- ME1}
+  if (Pop=="Au") {matrices <- MAu}
+  if (Pop=="Po") {matrices <- MPo}
+  if (Pop=="Pe") {matrices <- MPe}
+  if (Pop=="Cr") {matrices <- MCr}
+
+  for (year in annees)
+ {lambdaA[year] <- lambda(matrices[[year]])}
+
+ cat("Population=",Pop,"Mean LambdaA=", mean(lambdaA),
+        "Min=", min(lambdaA),"Max=", max(lambdaA), "\n")
+
+}
+
+
+
+#Stochastic growth rate
+#Using the global matrice to define the initial distribution
+load("matrice_globale.Rdata")
+lambdaS <- NULL
+lambdaSPo <- NULL
+lambdaSAu <- NULL
+lambdaSPe <- NULL
+lambdaSE1 <- NULL
+lambdaSE2 <- NULL
+lambdaSCr <- NULL
+
+for (p in 1:length(populations)) {
+  # Initialisation
+  Pop <- populations[p]
+  
+  if (Pop=="E2") {matrices <- ME2}
+  if (Pop=="E1") {matrices <- ME1}
+  if (Pop=="Au") {matrices <- MAu}
+  if (Pop=="Po") {matrices <- MPo}
+  if (Pop=="Pe") {matrices <- MPe}
+  if (Pop=="Cr") {matrices <- MCr}
+
+    #1000 iterations
+    for (iter in 1:1000) {
+      N0 <- eigen.analysis(matrice_globale)$stable.stage
+         # Iteration over 100 years
+           time <- 1
+             repeat
+               {
+               yr <- sample(annees,1)
+               Nt <-matrices[[yr]] %*% N0 
+               lambdaS[time] <- log(sum(Nt))
+               N0 <- Nt/sum(Nt)
+               time <- time + 1
+               if (sum(Nt)==0 || time >100) break
+             }
+      
+         lambdaS[is.infinite(lambdaS)] <- 1e-16
+           
+  if (Pop=="E2") {lambdaSE2[iter] <- exp(mean(lambdaS, na.rm=T))}
+  if (Pop=="E1") {lambdaSE1[iter] <- exp(mean(lambdaS, na.rm=T))}
+  if (Pop=="Au") {lambdaSAu[iter] <- exp(mean(lambdaS, na.rm=T))}
+  if (Pop=="Po") {lambdaSPo[iter] <- exp(mean(lambdaS, na.rm=T))}
+  if (Pop=="Pe") {lambdaSPe[iter] <- exp(mean(lambdaS, na.rm=T))}
+  if (Pop=="Cr") {lambdaSCr[iter] <- exp(mean(lambdaS, na.rm=T))}                              } #end of iterations
+    
+} #end of populations
+
+
+mean(lambdaSE2);mean(lambdaSE2)-1.96*sd(lambdaSE2);mean(lambdaSE2)+1.96*sd(lambdaSE2);
+mean(lambdaSE1);mean(lambdaSE1)-1.96*sd(lambdaSE1);mean(lambdaSE1)+1.96*sd(lambdaSE1);
+mean(lambdaSAu);mean(lambdaSAu)-1.96*sd(lambdaSAu);mean(lambdaSAu)+1.96*sd(lambdaSAu);
+mean(lambdaSPo);mean(lambdaSPo)-1.96*sd(lambdaSPo);mean(lambdaSPo)+1.96*sd(lambdaSPo);
+mean(lambdaSPe);mean(lambdaSPe)-1.96*sd(lambdaSPe);mean(lambdaSPe)+1.96*sd(lambdaSPe);
+mean(lambdaSCr);mean(lambdaSCr)-1.96*sd(lambdaSCr);mean(lambdaSCr)+1.96*sd(lambdaSCr)
+ 
+```

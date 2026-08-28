@@ -185,7 +185,8 @@ for (i in 2:28){
   ev <- eigen(M)
   N <- M%*%N
   Nf_est_MPM[i] <- N[3]
-  }
+}
+
 ```
 
 ```{r}
@@ -200,6 +201,16 @@ Nf_est_IPM versus Nf_est_MPM
 plot(Nf_est_IPM, Nf_est_MPM, xlim=c(0,800), ylim=c(0,800),
      xlab="Nb flowering plants from IPM", ylab="Nb of flowering plants from MPM")
 abline(a=0,b=1)
+
+
+summary(lm(Nf_est_IPM ~ Nf))$r.squared
+biais = mean(Nf_est_IPM - Nf, na.rm = TRUE)
+biais_relatif = 100 * biais / mean(Nf, na.rm = TRUE)
+
+summary(lm(Nf_est_MPM ~ Nf))$r.squared
+biais = mean(Nf_est_MPM - Nf, na.rm = TRUE)
+biais_relatif = 100 * biais / mean(Nf, na.rm = TRUE)
+
 ```
 
 
@@ -213,7 +224,6 @@ Comparaison des variations interannuelles
 observed_ratio <- Nf[-1]/Nf[-28]
 ratio_IPM <- Nf_est_IPM[-1]/Nf_est_IPM[-28]
 ratio_MPM <- Nf_est_MPM[-1]/Nf_est_MPM[-28]
-
 ratio_max <- max(observed_ratio, ratio_IPM,ratio_MPM, na.rm=TRUE)
 
 plot(observed_ratio ~ annees, ylim=c(0,ratio_max), xlab="Year", ylab="Observed ratio", type="l", col="red")
@@ -237,8 +247,8 @@ text(3,2,"Green = IPM")
 Stat
 
 ```{r}
-summary(lm(ratio_IPM ~ observed_ratio))$r.squared
-summary(lm(ratio_MPM ~ observed_ratio))$r.squared
+cor.test(ratio_IPM, observed_ratio)
+cor.test(ratio_MPM, observed_ratio)
 
 biaisIPM <- mean(ratio_IPM - observed_ratio, na.rm = TRUE)
 print(biaisIPM)
@@ -551,4 +561,67 @@ ggplot(r2_data_joined, aes(x = Pop, y = biais_relatif, fill = model)) +
 
 ```
 
+
+Figure 4
+```{r}
+
+Flow_Plant <- data.frame(Year = 1995:2022, Nf_est_IPM, Nf_est_MPM, Nf)
+ratio <- data.frame(Year = 1995:2021, observed_ratio, ratio_MPM, ratio_IPM)
+
+
+Figure4a <- ggplot(data=Flow_Plant, aes(x=Year, y=Nf)) +
+    geom_point(color="blue", show.legend = FALSE) +
+    geom_line(color="blue", show.legend = FALSE) +
+    geom_point(aes(x=Year, y=Nf_est_MPM), color="black", show.legend = FALSE) +
+    geom_line(aes(x=Year, y=Nf_est_MPM), color="black", show.legend = FALSE) +
+    geom_point(aes(x=Year, y=Nf_est_IPM), color="red", show.legend = FALSE) +
+    geom_line(aes(x=Year, y=Nf_est_IPM), color="red", show.legend = FALSE) +
+    annotate("segment", x = 2010, xend = 2014, y = 800, yend = 800,
+           colour = "blue", size = 0.5) +
+    annotate("point", x=2012, y=800, colour="blue", size=2)  +
+    annotate("text", x = 2015, y = 800, label = "Observed data", hjust = 0) +
+    annotate("segment", x = 2010, xend = 2014, y = 750, yend = 750,
+           colour = "black", size = 0.5) +
+    annotate("point", x=2012, y=750, colour="black", size=2)  +
+    annotate("text", x = 2015, y = 750, label = "Matrix Projection Model", hjust = 0) +
+    annotate("segment", x = 2010, xend = 2014, y = 700, yend = 700,
+           colour = "red", size = 0.5) +
+    annotate("point", x=2012, y=700, colour="red", size=2)  +
+    annotate("text", x = 2015, y = 700, label = "Integral Projection Model", hjust = 0) +
+    theme_bw(base_size = 6) +
+    ylim(0,850)+
+    labs(x = "Year", y = "Number of Flowering Plants",
+     subtitle="A- Pooling data over the 6 populations") 
+    
+
+Figure4b <- ggplot(data=ratio, aes(x=Year, y=observed_ratio)) +
+    geom_point(color="blue", show.legend = FALSE) +
+    geom_line(color="blue", show.legend = FALSE) +
+    geom_point(aes(x=Year, y=ratio_MPM), color="black", show.legend = FALSE) +
+    geom_line(aes(x=Year, y=ratio_MPM), color="black", show.legend = FALSE) +
+    geom_point(aes(x=Year, y=ratio_IPM), color="red", show.legend = FALSE) +
+    geom_line(aes(x=Year, y=ratio_IPM), color="red", show.legend = FALSE) +
+    annotate("segment", x = 1995, xend = 1999, y = 3.5, yend = 3.5,
+           colour = "blue", size = 0.5) +
+    annotate("point", x=1997, y=3.5, colour="blue", size=2)  +
+    annotate("text", x = 2000, y = 3.5, label = "Observed data", hjust = 0) +
+    annotate("segment", x = 1995, xend = 1999, y = 3, yend = 3,
+           colour = "black", size = 0.5) +
+    annotate("point", x=1997, y=3, colour="black", size=2)  +
+    annotate("text", x = 2000, y = 3, label = "Matrix Projection Model", hjust = 0) +
+    annotate("segment", x = 1995, xend = 1999, y = 2.5, yend = 2.5,
+           colour = "red", size = 0.5) +
+    annotate("point", x=1997, y=2.5, colour="red", size=2)  +
+    annotate("text", x = 2000, y = 2.5, label = "Integral Projection Model", hjust = 0) +
+    theme_bw(base_size = 6) +
+    ylim(0,4)+
+    labs(x = "Year", y = "Ratio t/t-1",
+     subtitle="B- Pooling data over the 6 populations") 
+
+library(patchwork)
+cairo_ps("Figure_4.ps", onefile=TRUE, width=8.27, height = 11.69)
+Figure4a + Figure4b +
+plot_layout(ncol=1, nrow=2)
+dev.off()
+```
 
