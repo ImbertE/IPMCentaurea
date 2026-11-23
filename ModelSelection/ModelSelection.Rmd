@@ -607,26 +607,71 @@ extractAIC(Growthglm2)[[2]]
 extractAIC(Growthglm3)[[2]]
 extractAIC(Growthglm4)[[2]]
 extractAIC(Growthglm5)[[2]]
+
+
+gof(Growthglm1)
+gof(Growthglm2)
+gof(Growthglm3)
+gof(Growthglm4)
+gof(Growthglm5)
 ```
 
-Better after a Boxcox transformation for SIZE
-Size1Mars^*0.4343354
-Size0Mars^*0.4343354
+Goodness of fit are not very good...
+
+In order to ameliorate the GOF, we propose to transform the variable using a BoxCox transformation BUT the criteria is the likelihood of the generalized model (not the classical one i.e. the normal distribution for the considered variable)
 
 ```{r}
-Growthglm1 <- fitme(Size1Mars^0.4343354 ~ 1 + poly(Size0Mars^0.4343354,3) + bs(Age,degree=2,knots=6.5) + (Age|year) + (1|Pop),
+boxcox <- function(object, interval=c(-0.1,0.9), verbose=FALSE) {
+  data <- object$data
+  Size0Mars <- data$Size0Mars
+  Size1Mars <- data$Size1Mars
+  objfn <- function(lambda, return_fit=FALSE) {
+    data$Size0Mars <- Size0Mars^lambda
+    data$Size1Mars <- Size1Mars^lambda
+    refit <- update(object, data=data)
+    if (return_fit) {
+      return(refit)
+    } else {
+      logjac <- sum((lambda-1)*log(Size1Mars)+log(lambda))
+      resu <- logLik(refit)+logjac
+      if (verbose) print(resu)
+      return( - resu)
+    }
+  }
+  
+  optr <- optimize(f=objfn,interval=interval)
+  return(list(optr=optr,
+              fit=objfn(lambda = optr$minimum, return_fit = TRUE),
+              objfn=objfn))
+}
+
+essai1 <- boxcox(Growthglm1)
+cat(essai1$optr$minimum)
+gof(essai1$fit)
+```
+
+
+
+
+
+Better after a Boxcox transformation for SIZE
+Size1Mars^0.4316387
+Size0Mars^0.4316387
+
+```{r}
+Growthglm1 <- fitme(I(Size1Mars^0.4316387) ~ 1 + poly(I(Size0Mars^0.4316387),3) + bs(Age,degree=2,knots=6.5) + (Age|year) + (1|Pop),
                      resid.model = ~ log(Size0Mars)+log(Age) + (1|year) + (1|Pop),data=growthdata)
 
-Growthglm2 <- fitme(Size1Mars^0.4343354 ~ 1 + poly(Size0Mars^0.4343354,3) + bs(Age,degree=2,knots=6.5) + (Size0Mars+Age|year) + (1|Pop),
+Growthglm2 <- fitme(I(Size1Mars^0.4316387) ~ 1 + poly(I(Size0Mars^0.4316387),3) + bs(Age,degree=2,knots=6.5) + (Size0Mars+Age|year) + (1|Pop),
                      resid.model= ~ log(Size0Mars) + log(Age) + (1|year) + (1|Pop),data=growthdata)
 
-Growthglm3 <- fitme(Size1Mars^0.4343354 ~ 1 + poly(Size0Mars^0.4343354,3) + bs(Age,degree=2,knots=6.5) + (Size0Mars+Age|year) + (Size0Mars+Age|Pop),
+Growthglm3 <- fitme(I(Size1Mars^0.4316387) ~ 1 + poly(I(Size0Mars^0.4316387),3) + bs(Age,degree=2,knots=6.5) + (Size0Mars+Age|year) + (Size0Mars+Age|Pop),
                      resid.model = ~ log(Size0Mars)+log(Age) + (1|year) + (1|Pop),data=growthdata)
 
-Growthglm4 <- fitme(Size1Mars^0.4343354 ~ 1 + bs(Size0Mars^0.4343354,df=5,degree=3) + bs(Age,degree=2,knots=6.5) + (Size0Mars+Age|year) + (1|Pop),
+Growthglm4 <- fitme(I(Size1Mars^0.4316387) ~ 1 + bs(I(Size0Mars^0.4316387),df=5,degree=3) + bs(Age,degree=2,knots=6.5) + (Size0Mars+Age|year) + (1|Pop),
                      resid.model = ~ log(Size0Mars)+log(Age) + (1|year) + (1|Pop), data=growthdata)
 
-Growthglm5 <- fitme(Size1Mars^0.4343354 ~ 1 + bs(Size0Mars^0.4343354,df=5,degree=3)+ bs(Age,degree=2,knots=6.5) + (Size0Mars+Age|year) + (Size0Mars|Pop),
+Growthglm5 <- fitme(I(Size1Mars^0.4316387) ~ 1 + bs(I(Size0Mars^0.4316387),df=5,degree=3)+ bs(Age,degree=2,knots=6.5) + (Size0Mars+Age|year) + (Size0Mars|Pop),
                      resid.model = ~ log(Size0Mars)+log(Age) + (1|year) + (1|Pop), data=growthdata)
 
 extractAIC(Growthglm1)[[2]]
@@ -701,6 +746,14 @@ Cptlglm2 <- fitme(Capitule ~ 1 + bs(Size0Mars,df=4,degree=2) + bs(Age,degree=3,k
 Cptlglm3 <- fitme(Capitule ~ 1 + poly(Size0Mars,2) + (Size0Mars|Pop) + (Size0Mars|year), 
                    data=cptldata, family= Poisson(trunc=0L))
 
+
+extractAIC(Cptlglm1)[[2]]
+extractAIC(Cptlglm2)[[2]]
+extractAIC(Cptlglm3)[[2]]
+
+gof(Cptlglm1)
+gof(Cptlglm2)
+gof(Cptlglm3)
 ```
 
 Best model Cptlglm1
@@ -747,34 +800,7 @@ pltmodBIC <- combiresult[posBIC]
 
 
 
-Establishment rate 
-Relationship between number of seedlings observed per quadrat on year t+1 depending on the number of capitula observed on the same quadrat on year t
-
-First use the predicted values to replace missing data using model Cptlglm1
-```{r}
-cptldata_predi <- IPM_data[IPM_data$Flowering==1,] %>%
-  mutate(Capitule = ifelse(is.na(Capitule),exp(predict(Cptlglm1)),Capitule))
-
-#Number of seedlings
-plt <- IPM_data %>% 
-  filter(Age==1) %>% 
-  group_by(Quadrat,year,Pop) %>% 
-  summarize(NombrePlantules = sum(Age))
-
-cptl <- cptldata_predi %>% 
-  group_by(Quadrat,year,Pop) %>% 
-  summarize(Capitule = sum(Capitule))
-cptl$year <- cptl$year+1
-
-Estb <- inner_join(plt,cptl, by=join_by(Quadrat,year,Pop))
-```
-
-Number of seedlings observed is dependent on the number of seed heads :
-```{r}
-Estbglm <- fitme(NombrePlantules ~ 1 + offset(log(Capitule)) + (1|Pop:year),data = Estb,
-                  family = Poisson(log))
-
-```
+See Establisment.Rmd
 
 On enregistre les modeles retenus
 

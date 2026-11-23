@@ -69,16 +69,16 @@ growthdata %>%
 
 qplot(growthdata$Size0Mars)
 qplot(growthdata$Size1Mars)
-qplot(growthdata$Size0Mars^0.4343554)
-qplot(growthdata$Size1Mars^0.4343554)
+qplot(growthdata$Size0Mars^0.4316387)
+qplot(growthdata$Size1Mars^0.4316387)
 ```
 
 
 
 ```{r}
 summary(Growthglm1)
-Growthpredict1 <- predict(Growthglm1, newdata = fake_data)[,1]
-Growthpredict1 <- exp(log(Growthpredict1)/0.4343354) #back transformation 
+Growthpredict1 <- predict(Growthglm1,newdata = fake_data)[,1]
+Growthpredict1 <- exp(log(Growthpredict1)/0.4316387) #back transformation 
 ```
 
 

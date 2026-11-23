@@ -195,7 +195,7 @@ Establishment rate is used to convert number of capitula produced in year t to n
 Density of individuals of size y and age 1 (seedling) at t from reproduction of a plant of size x and age a at t :
 $$F_a(x,y,t)=f_a(x)c_a(x)\omega(y)Estb$$
 
-In the R script 
+In the R script - voir IPM.Rmd
 
 #Combine fecundity and flowering probability 
 fyx0 <- function(x , a, Estbl, Beta = 0) {
