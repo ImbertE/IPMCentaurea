@@ -1,0 +1,218 @@
+---
+title: "Establishment rate"
+author: "Eric Imbert, Loic Pages & François Rousset & Ophélie Ronce"
+date: "2026-10-14"
+output: pdf_document
+---
+
+```{r}
+rm(list=ls())
+library(knitr)
+library(spaMM)
+library(tidyverse)
+library(splines)
+library(foreach)
+library(doParallel)
+library(rcdd)
+
+
+IPM_data <- read.csv("../data/donneesIPM.csv") #data usual format for IPM
+#remove individuals Age and Size unknown
+centauree_data <- IPM_data[!is.na(IPM_data$Size0Mars) & !is.na(IPM_data$Age),]
+centauree_data$Age[centauree_data$Age > 8] <- 8
+
+spaMM.options(separation_max=70)
+```
+
+
+Establishment rate 
+Relationship between number of seedlings observed per quadrat on year t depending on the number of capitula observed on the same quadrat on year t-1
+
+First we used the predicted values to replace missing data using model Cptlglm1 and next we create a dataset with nb of seed heads (capitula) and nb of seedlings the previous year
+
+```{r}
+cptldata <- centauree_data[centauree_data$Flowering!=0,]
+Cptlglm1 <- fitme(log(Capitule) ~ 1  + Size0Mars + (Age|year), 
+                  data=cptldata)
+
+cptldata_predi <- IPM_data[IPM_data$Flowering==1,] %>%
+  mutate(Capitule = ifelse(is.na(Capitule),exp(predict(Cptlglm1)),Capitule))
+
+#Number of seedlings
+plt <- IPM_data %>%
+filter(Age ==1) %>% 
+  summarise(Plantules = n(), .by= c(Quadrat,year))
+
+#Number of capitula with a one-year delay
+cptl <- cptldata_predi %>% 
+  group_by(Quadrat,year,Pop) %>% 
+  summarize(Capitule = sum(Capitule),.groups="drop")
+cptl$year <- cptl$year+1
+
+
+#Make the dataset Number of seedlings and capitulas per quadrat for each year
+qq <- unique(IPM_data$Quadrat)
+Pop <- NULL
+for (i in 1:length(qq)) {
+  Pop[i] <- unique(IPM_data$Pop[IPM_data$Quadrat==qq[i]])}
+rer <- cbind(qq,Pop)
+annee <- unique(IPM_data$year)
+rer2 <- do.call(rbind, replicate(length(annee), rer, simplify = FALSE))
+annee <- rep(annee,length(qq))
+annee <- sort(annee)
+
+donnees <- data.frame(rer2,annee)
+names(donnees) <- c("Quadrat", "Pop","year")
+class(donnees$Quadrat) <- "numeric"
+class(donnees$Pop) <- "string"
+donnees$Seedling <- 0
+donnees$Capitula <- 0
+
+#add the number of seedlings
+donnees <- donnees %>%
+  left_join(
+    plt %>% select(Quadrat, year,Plantules),
+    by = c("Quadrat", "year")
+  ) %>%
+  mutate(Seedling = ifelse(is.na(Plantules), Seedling, Plantules)) %>%
+  select(-Plantules)
+
+#Add the number of seed heads 
+donnees <- donnees %>%
+  left_join(
+    cptl %>% select(Quadrat, year, Capitule),
+    by = c("Quadrat", "year")
+  ) %>%
+  mutate(Capitula = ifelse(is.na(Capitule), Capitula, Capitule)) %>%
+  select(-Capitule)
+
+
+#remove the first year (no data)
+donnees <- subset(donnees, donnees$year>1994)
+```
+
+
+
+The number of seedlings observed in a quadrat in year t depend on :
+
+1- number of migrants, noted mu
+2- number of capitula observed in the same quadrat in year t-1 * the establishment rate, Estb
+
+$$seedlings_t = \mu + Estb * capitula_{t-1}$$
+
+Because of the Poisson distribution of the Nb of seedlings, the model is :
+
+
+$$seedlings_t = log(\mu + Estb * capitula_{t-1})$$
+We also assume log(*Gamma random effect*)
+
+We first define an objective function that gives the (negative) log likelihood of the model fitted with an offset of the form $\log(\mu+Estb*capitula) for *given* values of the fixed effects coefficients $\mu$ and $\Estb$ (therefore, only the random effects are fitted):
+
+
+```{r Clapefn}
+Clapefn <- function(v, data, 
+                    formula, # the formula will contain offset(logfixef)
+                    rand.family, 
+                    return.fit=FALSE) {
+  fixef <- v[1] + v[2] * data$Capitula
+  data$logfixef <- log(fixef)
+  fit <- fitme(formula=formula, data=data,
+              rand.family=rand.family, family=poisson(log) )
+  if (return.fit) {fit} else {-logLik(fit)}
+}
+```
+
+Next we use an optimization function to estimate the coefficients v[1] and v[2] (i.e. mu and Estb)
+Note that using `rand.family=Gamma(log)` below implies that the mean value of the random effect is 1. Otherwise, this might complicate the interpretation of the fits below. Alternatively, we could have assumed `exp(rnorm(.))` in the data simulation, and the default Gaussian distribution for the random effects in the statistical model. 
+
+```{r optr, cache=TRUE}
+lower <- c(1e-6,1e-6)
+upper <- c(200,200)
+(optr <- (spaMM::.safe_opt(
+  init=c(1,0.1),objfn = Clapefn,
+  data=donnees, lower = lower, upper=upper,
+  verbose = FALSE,LowUp = list(lower=lower, upper=upper),
+  formula=Seedling ~ offset(logfixef) + 0 + (1|Pop:year), # Note the +0+ ...
+  rand.family=Gamma(log),
+  return.fit=FALSE
+)))
+optr$solution
+```
+
+
+The fitted coefficients are `r optr$solution`, first term is mu and second term is Estb
+
+Here I (François Rousset) used an undocumented function of `spaMM`, `spaMM::.safe_opt` because I (FR) know well its syntax, and it deals with various potential problems. But other optimizers could be used.
+
+Get the final fit:
+```{r Clapefit}
+(Clapefit <- Clapefn(optr$solution, data=donnees, 
+         formula=Seedling ~ offset(logfixef) + 0 + (1|Pop:year),
+         rand.family=Gamma(log), return.fit=TRUE) )
+```
+
+<!-- The `lambda` value is reasonably close to its target value which is here the scale parameter of the Gamma distribution, `scale=0.5` above. -->
+
+I have used `rand.family=Gamma(log)` to match the data simulation, but one could assume default gaussian random effects, with often give similar fits.
+
+
+We now have the number of seedlings predicted as a function of the number of seed heads observed
+
+```{r plot}
+plot(Clapefit, which="predict", xlim=c(0,170), ylim=c(0,170))
+```
+
+Comparaison observed/predicted per year
+
+```{r}
+
+donnees$pred_seedling <- predict(Clapefit)[,1]
+
+bilan <- donnees %>% 
+    group_by(year) %>%
+    summarize(Seedling=sum(Seedling), pred_seedling=sum(pred_seedling), Capitula=sum(Capitula))
+
+bilan$Estb <- bilan$Seedling/bilan$Capitula
+bilan$pred <- bilan$pred_seedling/bilan$Capitula
+
+bilan %>%
+  ggplot(aes(x = year, y = Estb)) +
+  geom_line(col="red") +
+  geom_line(aes(y= pred), col="green") +
+  labs(y="Establishment rate",
+       x="Year",
+       subtitle = "Red line : mean of observed values
+       Green line : predicted value") +
+    theme_minimal()
+```
+
+
+
+Integration in IPM
+
+Establishment rate is used to convert number of capitula produced in year t to nb of seedlings in year t+1.  More precisely :
+
+Density of individuals of size y and age 1 (seedling) at t from reproduction of a plant of size x and age a at t :
+$$F_a(x,y,t)=f_a(x)c_a(x)\omega(y)Estb$$
+
+In the R script 
+
+#Combine fecundity and flowering probability 
+fyx0 <- function(x , a, Estbl, Beta = 0) {
+  p.flow <- flr1(x, a, Beta) #flowering probability
+  n.captl <- numbofcap(x, a) #number of capitula per flowering plant
+  Estbl <- Estbli(populations,annees)
+  
+  feco <- p.flow * n.captl * Estbl
+  return(feco)
+}
+
+
+Donc on peut 
+1- soit utiliser la fonction Clapefit pour estimer le nombre de seedlings à partir du nombre de capitules... mais cela me semble un peu complexe à coder proprement (?)
+
+
+2- au plus simple, calculer Estbl global ou par pop ou par année ou par pop*année en fonction de l'IPM que l'on implémente
+
+
+

@@ -1,0 +1,305 @@
+---
+title: "Flowering Models Fitted"
+author: "Loïc Pages & Eric Imbert"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  word_document: default
+  html_document:
+    df_print: paged
+---
+
+Plot raw data, predicted values from models (see ModelSelection.Rmd) and make a decision for flowering models 
+
+```{r}
+rm(list=ls())
+library(knitr)
+library(spaMM)
+library(tidyverse)
+library(splines)
+library(foreach)
+library(doParallel)
+library(patchwork)
+
+IPM_data <- read.csv("../data/donneesIPM.csv")
+centauree_data <- IPM_data[!is.na(IPM_data$Size0Mars) & !is.na(IPM_data$Age),]
+centauree_data$Age[centauree_data$Age > 8] <- 8
+
+spaMM.options(separation_max=70)
+load("SelectedModels.RData")
+
+#Fake data
+annees <- 1995:2022
+populations <- c("E2","E1","Au","Po","Pe","Cr")
+taille_range <- seq(0.5, 25, by = 0.5) 
+age_range <- 1:8
+
+fake_data <- expand.grid(
+  year = annees,
+  Pop = populations,
+  Size0Mars = taille_range,
+  Age = age_range
+)
+
+fake_data <- fake_data %>% 
+  mutate(Nrw = row_number())
+```
+
+BIC
+```{r}
+# N the number of subjects
+# ntot the total number of observations
+extractBIC <- function(fit, ntot, N){
+  extractAIC(fit)[[2]] +(log(ntot)-2)*DoF(fit)[[3]] + log(N)*DoF(fit)[[1]]
+}
+```
+
+# Flowering probability
+
+```{r}
+centauree_data %>%
+  group_by(Size0Mars) %>%
+  mutate(floweringProba = sum(Flowering, na.rm = TRUE) / n()) %>% 
+  ggplot(aes(x = Size0Mars, y = Flowering)) +
+  geom_count(alpha = 0.6) +  
+  geom_point(aes(y = floweringProba), color = "red", size = 0.5) +
+  labs(title = "Relation entre la taille et la floraison",
+    x = "Taille",
+    y = "Floraison",
+subtitle = "Grey points : observed survival (0/1)
+Red points : mean value for each size") +
+  ylim(0, 1) +
+  theme_minimal()
+
+centauree_data %>%
+  group_by(Age) %>%
+  mutate(floweringProba = sum(Flowering, na.rm = TRUE) / n()) %>% 
+  ggplot(aes(x = Age, y = Flowering)) +
+  geom_count(alpha = 0.6) +  
+  geom_point(aes(y = floweringProba), color = "red", size = 0.5) +
+  geom_line(aes(y = floweringProba), color = "red") +
+  labs(title = "Relation entre la taille et la floraison",
+    x = "age",
+    y = "Floraison",
+  subtitle = "Grey points : observed survival (0/1)
+Red line/points : mean value for each age") +
+ ylim(0, 1) +
+  theme_minimal()
+
+```
+
+
+5 models with AIC and 5 with BIC
+```{r, warning=FALSE}
+
+result <- function(combi) {
+  effect_formula <- paste(unlist(combi), collapse = "+")
+  formula <- as.formula(paste("Flowering", "~", effect_formula))
+  fit <- fitme(formula, data = centauree_data, family=binomial, method = "PQL/L")
+}
+
+Aflowglm1 <- result(flowmodAIC[[1]])
+Aflowglm2 <- result(flowmodAIC[[2]])
+Aflowglm3 <- result(flowmodAIC[[3]])
+Aflowglm4 <- result(flowmodAIC[[4]])
+Aflowglm5 <- result(flowmodAIC[[5]])
+
+Bflowglm1 <- result(flowmodBIC[[1]])
+Bflowglm2 <- result(flowmodBIC[[2]])
+Bflowglm3 <- result(flowmodBIC[[3]])
+Bflowglm4 <- result(flowmodBIC[[4]])
+Bflowglm5 <- result(flowmodBIC[[5]])
+
+summary(Aflowglm1)
+summary(Aflowglm2)
+summary(Aflowglm3)
+summary(Aflowglm4)
+summary(Aflowglm5)
+
+summary(Bflowglm1)
+summary(Bflowglm2)
+summary(Bflowglm3)
+summary(Bflowglm4)
+summary(Bflowglm5)
+
+Aflowpredict1 <- predict(Aflowglm1, newdata = fake_data)[,1]
+Aflowpredict2 <- predict(Aflowglm2, newdata = fake_data)[,1]
+Aflowpredict3 <- predict(Aflowglm3, newdata = fake_data)[,1]
+Aflowpredict4 <- predict(Aflowglm4, newdata = fake_data)[,1]
+Aflowpredict5 <- predict(Aflowglm5, newdata = fake_data)[,1]
+Bflowpredict1 <- predict(Bflowglm1, newdata = fake_data)[,1]
+Bflowpredict2 <- predict(Bflowglm2, newdata = fake_data)[,1]
+Bflowpredict3 <- predict(Bflowglm3, newdata = fake_data)[,1]
+Bflowpredict4 <- predict(Bflowglm4, newdata = fake_data)[,1]
+Bflowpredict5 <- predict(Bflowglm5, newdata = fake_data)[,1]
+
+
+```
+
+
+```{r}
+plot_Flowering <- function(data = fake_data, prediction) {
+  data %>%
+  mutate(flow_predi = prediction) %>%
+  group_by(Size0Mars, Age) %>%
+  summarise(flow_predi = mean(flow_predi),
+            .groups = "drop") %>%
+  ggplot(aes(x = Size0Mars, y = flow_predi)) +
+  geom_count(data=centauree_data,aes(x=Size0Mars,y=Flowering,col=as.factor(Age)),alpha = 0.6,show.legend = FALSE) +
+  geom_line(aes(color = as.factor(Age)),size=0.75,show.legend = FALSE) +
+  theme_bw()+
+  ylim(0, 1) +
+  labs(x = "Size",
+      y = "Flowering probability",
+      color = "Age")+
+  scale_color_brewer(palette = "Spectral", direction = -1)
+}
+
+plot_Floweringbis <- function(data = fake_data, prediction) {
+  data %>%
+  mutate(flow_predi = prediction) %>%
+  group_by(Size0Mars, Age) %>%
+  summarise(flow_predi = mean(flow_predi),
+            .groups = "drop") %>%
+  ggplot(aes(x = Size0Mars, y = flow_predi)) +
+  geom_count(data=centauree_data,aes(x=Size0Mars,y=Flowering,col=as.factor(Age)),alpha = 0.6,show.legend = FALSE) +
+  geom_line(aes(color = as.factor(Age)),size=0.75) +
+  theme_bw()+
+  ylim(0, 1) +
+  labs(x = "Size",
+      y = "Flowering probability",
+      color = "Age")+
+  scale_color_brewer(palette = "Spectral", direction = -1)
+}
+
+plot_Flowering2 <- function(data = fake_data, prediction, var, fact) {
+  data %>%
+    mutate(flow_predi = prediction) %>%
+    filter(Size0Mars==10) %>% 
+    group_by(!!sym(var), !!sym(fact)) %>%
+     summarise(flow_predi = mean(flow_predi),
+            .groups = "drop") %>%
+    ggplot(aes(x = .data[[var]], y = flow_predi)) +
+    geom_line(aes(color = as.factor(.data[[fact]])),show.legend = FALSE) +
+    theme_minimal() +
+    scale_color_viridis_d(option = "plasma")+
+    ylim(0, 1)
+}
+
+plot_Flowering2bis <- function(data = fake_data, prediction, var, fact) {
+  data %>%
+    mutate(flow_predi = prediction) %>%
+    filter(Size0Mars==10) %>% 
+    group_by(!!sym(var), !!sym(fact)) %>%
+    summarise(flow_predi = mean(flow_predi),
+            .groups = "drop") %>%
+    ggplot(aes(x = .data[[var]], y = flow_predi)) +
+    geom_line(aes(color = as.factor(.data[[fact]])),show.legend = FALSE) +
+    theme_minimal() +
+    ylim(0, 1)
+}
+
+```
+
+Flowering en fonction de la taille
+
+En fixant la population et l'année : voir l'effet age
+
+```{r,warning=FALSE,echo=FALSE}
+wrap_plots(
+  plot_Flowering(prediction = Aflowpredict1),
+  plot_Flowering(prediction = Aflowpredict2),
+  plot_Flowering(prediction = Aflowpredict3),
+  plot_Flowering(prediction = Aflowpredict4),
+  plot_Floweringbis(prediction = Aflowpredict5)
+)
+```
+
+```{r,warning=FALSE,echo=FALSE}
+wrap_plots(
+  plot_Flowering(prediction = Bflowpredict1),
+  plot_Flowering(prediction = Bflowpredict2),
+  plot_Flowering(prediction = Bflowpredict3),
+  plot_Flowering(prediction = Bflowpredict4),
+  plot_Floweringbis(prediction = Bflowpredict5)
+)
+```
+
+Flowering en fonction de l'age (taille fixé)
+En moyennant sur les années : voir l'effet population
+
+```{r,warning=FALSE,echo=FALSE}
+var <- "Age"
+fact <- "Pop"
+
+wrap_plots(
+  plot_Flowering2(prediction = Aflowpredict1, var=var, fact=fact),
+  plot_Flowering2(prediction = Aflowpredict2, var=var, fact=fact),
+  plot_Flowering2(prediction = Aflowpredict3, var=var, fact=fact),
+  plot_Flowering2(prediction = Aflowpredict4, var=var, fact=fact),
+  plot_Flowering2(prediction = Aflowpredict5, var=var, fact=fact)
+)
+```
+
+```{r,warning=FALSE,echo=FALSE}
+wrap_plots(
+  plot_Flowering2(prediction = Bflowpredict1, var=var, fact=fact),
+  plot_Flowering2(prediction = Bflowpredict2, var=var, fact=fact),
+  plot_Flowering2(prediction = Bflowpredict3, var=var, fact=fact),
+  plot_Flowering2(prediction = Bflowpredict4, var=var, fact=fact),
+  plot_Flowering2(prediction = Bflowpredict5, var=var, fact=fact)
+)
+```
+
+En moyennant sur les populations : voir l'effet année
+ 
+
+```{r,warning=FALSE,echo=FALSE}
+var <- "Age"
+fact <- "year"
+
+wrap_plots(
+  plot_Flowering2bis(prediction = Aflowpredict1, var=var, fact=fact),
+  plot_Flowering2bis(prediction = Aflowpredict2, var=var, fact=fact),
+  plot_Flowering2bis(prediction = Aflowpredict3, var=var, fact=fact),
+  plot_Flowering2bis(prediction = Aflowpredict4, var=var, fact=fact),
+  plot_Flowering2bis(prediction = Aflowpredict5, var=var, fact=fact)
+)
+```
+
+```{r,warning=FALSE,echo=FALSE}
+wrap_plots(
+  plot_Flowering2bis(prediction = Bflowpredict1, var=var, fact=fact),
+  plot_Flowering2bis(prediction = Bflowpredict2, var=var, fact=fact),
+  plot_Flowering2bis(prediction = Bflowpredict3, var=var, fact=fact),
+  plot_Flowering2bis(prediction = Bflowpredict4, var=var, fact=fact),
+  plot_Flowering2bis(prediction = Bflowpredict5, var=var, fact=fact)
+)
+```
+
+
+Goodness of fit
+Must reduced sample size to max=5000
+So new model but on a dataset randomly reduced
+```{r}
+
+myrow <- sample(seq(1:5000), 5000, replace=FALSE)
+centauree_data_reduced <- centauree_data[myrow,]
+
+effect_formula <- paste(unlist(flowmodAIC[[1]]), collapse = "+")
+formula <- as.formula(paste("Flowering", "~", effect_formula))
+fit <- fitme(formula, data = centauree_data_reduced, family=binomial, method = "PQL/L")
+
+gof_binom <- function(model) {
+  series_gof <- NULL
+  for(i in 1:1000) {
+    series_gof[i] <- gof(model)$p.value
+  }
+  return(mean(series_gof))
+}
+
+gof_binom(fit)
+```
+
+
+Selected model flowmodAIC[[1]]
